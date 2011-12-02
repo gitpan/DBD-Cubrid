@@ -181,7 +181,7 @@ use strict;
         my $dbh = shift;
         local $SIG{__WARN__} = sub { } if $dbh->FETCH('PrintError');
         my $ret = DBD::cubrid::db::_ping($dbh);
-        return $ret ? 0 : 1;
+        return $ret ? 1 : 0;
     }
 
     sub get_info {

@@ -11,7 +11,7 @@ require 'lib.pl';
 use vars qw($table $test_dsn $test_user $test_passwd);
 
 my $dbh;
-eval {$dbh= DBI->connect($test_dsn, $test_user, $test_password,
+eval {$dbh= DBI->connect($test_dsn, $test_user, $test_passwd,
                       { RaiseError => 1, PrintError => 1, AutoCommit => 0 });};
 if ($@) {
     plan skip_all => "ERROR: $DBI::errstr. Can't continue test";
@@ -45,20 +45,20 @@ $charVal = "Tim Bunce";
 ok ($sth->execute($numericVal, $charVal));
 
 # Now try the explicit type settings
-ok ($sth->bind_param(1, " 4", SQL_INTEGER()));
+ok ($sth->bind_param(1, " 4"));
 
 # umlaut equivelant is vowel followed by 'e'
 ok ($sth->bind_param(2, 'Andreas Koenig'));
 ok ($sth->execute);
 
 # Works undef -> NULL?
-ok ($sth->bind_param(1, 5, SQL_INTEGER()));
+ok ($sth->bind_param(1, 5));
 
 ok ($sth->bind_param(2, undef));
 
 ok ($sth->execute);
 
-ok ($sth->bind_param(1, undef, SQL_INTEGER()));
+ok ($sth->bind_param(1, undef));
 
 ok ($sth->bind_param(2, undef));
 

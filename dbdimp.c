@@ -369,14 +369,14 @@ dbd_db_ping( SV *dbh )
 
     D_imp_dbh (dbh);
 
-    if ((res = cci_prepare (imp_dbh->handle, query, 0, &error))) {
+    if ((res = cci_prepare (imp_dbh->handle, query, 0, &error)) < 0) {
         handle_error (dbh, res, &error);
         return FALSE;
     }
 
     req_handle = res;
 
-    if ((res = cci_execute (req_handle, 0, 0, &error))) {
+    if ((res = cci_execute (req_handle, 0, 0, &error)) < 0) {
         handle_error (dbh, res, &error);
         return FALSE;
     }
@@ -391,12 +391,12 @@ dbd_db_ping( SV *dbh )
             return FALSE;
         }
 
-        if ((res = cci_fetch (req_handle, &error))) {
+        if ((res = cci_fetch (req_handle, &error)) < 0) {
             handle_error (dbh, res, &error);
             return FALSE;
         }
 
-        if ((res = cci_get_data (req_handle, 1, CCI_A_TYPE_INT, &result, &ind))) {
+        if ((res = cci_get_data (req_handle, 1, CCI_A_TYPE_INT, &result, &ind)) < 0) {
             handle_error (dbh, res, &error);
             return FALSE;
         }

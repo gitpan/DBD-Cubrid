@@ -2,33 +2,35 @@
 DBD::cubrid  --  an CUBRID interface for Perl 5.
 
    Copyright (c) 2011  Zhang Hui, China
+=====================================================================
 
-*** QUICK START GUIDE:
+The driver installation is described in
 
-    The DBI requires one or more 'driver' modules to talk to databases.
-    Fetch, build and install the DBI module as per its README file.
-    You may then delete its source directory tree since it's no longer needed.
-    Use the 'perldoc DBI' command to read the DBI documentation.
+  INSTALL.html
 
-    Fetch this DBD::cubrid driver module and unpack it.
-    Follow the guidelines in this README file carefully.
+In short: If you are using
 
+  Windows/ActivePerl
 
-*** BUILDING:
+    The actual installation is as simple as
 
-Execute:
+        ppm install DBI
+        ppm install DBD::cubrid
 
-    perl Makefile.PL            # use a perl that's in your PATH
+  Linux
 
-Use the perl that is first on your PATH. Then execute:
+    perl -MCPAN -e shell
+    install DBD::cubrid
+
+Build from source code
+
+    perl Makefile.PL
 
     make
-
     make test
-
-If the all the formal tests pass then, finally, run:
+    
+  If all the formal tests pass then, finally, run:
 
     make install
 
-End.
 

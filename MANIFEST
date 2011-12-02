@@ -1,12 +1,14 @@
-dbdimp.c
-dbdimp.h
+INSTALL.html
+MANIFEST
+META.yml
+Makefile.PL
+README
 cubrid.h
 cubrid.pm
 cubrid.xs
+dbdimp.c
+dbdimp.h
 lib/DBD/cubrid/GetInfo.pm
-Makefile.PL
-MANIFEST
-README
 t/01base.t
 t/10connect.t
 t/20createdrop.t
@@ -23,5 +25,3 @@ t/40tableinfo.t
 t/41bindparam.t
 t/42bindparam.t
 t/lib.pl
-META.yml
-Changes
