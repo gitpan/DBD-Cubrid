@@ -1,10 +1,4 @@
 #!perl -w
-# vim: ft=perl
-#
-#   $Id$
-#
-#   This tests, whether the number of rows can be retrieved.
-#
 
 use strict;
 use DBI;
@@ -22,7 +16,7 @@ if ($@) {
     plan skip_all => 
         "ERROR: $DBI::errstr. Can't continue test";
 }
-plan tests => 26; 
+plan tests => 30;
 
 ok $dbh->do("DROP TABLE IF EXISTS $table");
 
@@ -41,7 +35,7 @@ ok ($sth = $dbh->prepare("SELECT * FROM $table WHERE id = 1"));
 
 ok $sth->execute;
 
-#is $sth->rows, 1, '$sth->rows should be 1';
+is $sth->rows, 1, '$sth->rows should be 1';
 
 ok ($aref= $sth->fetchall_arrayref);
 
@@ -55,7 +49,7 @@ ok ($sth = $dbh->prepare("SELECT * FROM $table WHERE id >= 1"));
 
 ok $sth->execute;
 
-#is $sth->rows, 2, '$sth->rows should be 2';
+is $sth->rows, 2, '$sth->rows should be 2';
 
 ok ($aref= $sth->fetchall_arrayref);
 
@@ -69,7 +63,7 @@ ok ($sth = $dbh->prepare("SELECT * FROM $table WHERE id >= 2"));
 
 ok $sth->execute;
 
-#is $sth->rows, 2, 'rows should be 2'; 
+is $sth->rows, 2, 'rows should be 2'; 
 
 ok ($aref= $sth->fetchall_arrayref);
 
@@ -81,7 +75,7 @@ ok ($sth = $dbh->prepare("SELECT * FROM $table"));
 
 ok $sth->execute;
 
-#is $sth->rows, 3, 'rows should be 3'; 
+is $sth->rows, 3, 'rows should be 3'; 
 
 ok ($aref= $sth->fetchall_arrayref);
 

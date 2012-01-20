@@ -13,10 +13,10 @@ require 'lib.pl';
 #
 #   Make -w happy
 #
-use vars qw($table $test_dsn $test_user $test_password);
+use vars qw($table $test_dsn $test_user $test_passwd);
 
 my $dbh;
-eval {$dbh= DBI->connect($test_dsn, $test_user, $test_password,
+eval {$dbh= DBI->connect($test_dsn, $test_user, $test_passwd,
                       { RaiseError => 1, PrintError => 1, AutoCommit => 0 });};
 
 if ($@) {

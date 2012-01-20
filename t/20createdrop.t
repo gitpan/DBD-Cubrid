@@ -24,10 +24,10 @@ plan tests => 5;
 
 ok(defined $dbh, "Connected to database");
 
-ok($dbh->do("DROP TABLE IF EXISTS $table"), "making slate clean");
+ok($dbh->do("DROP TABLE IF EXISTS $table"), "Making slate clean");
 
-ok($dbh->do("CREATE TABLE $table (id INT(4), name VARCHAR(64))"), "creating $table");
+ok($dbh->do("CREATE TABLE $table (id INT(4), name VARCHAR(64))"), "Creating $table");
 
-ok($dbh->do("DROP TABLE $table"), "dropping created $table");
+ok($dbh->do("DROP TABLE $table"), "Dropping created $table");
 
-ok $dbh->disconnect ();
+ok($dbh->disconnect (), "Disconnecting");

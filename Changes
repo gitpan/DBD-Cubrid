@@ -1,5 +1,35 @@
 Revision history for DBD::cubrid
 
+Changes in DBD-cubrid 8.4.0.0002    2011-12-30
+
+After a figorous testing, this release modified many bugs on last version and serveral new featurees have been
+added to this version such as functions about the lob object.
+
+[ENHANCEMENTS]
+- Added cubrid_lob_get: This method can get a column of the lob object from CUBRID database.
+- Added cubrid_lob_export: This method will export a lob object as a file.
+- Added cubrid_lob_import: This method will import a file in CUBRID database.
+- Added cubrid_lob_close: This method will close the lob object that cubrid_lob_get gets.
+- Added type_info_all/type_info: APIS-63
+
+- Implemented foreign_key_info: we just gave an interface not implemented it in last version.
+- Supported BLOB/CLOB in bind_param
+
+[BUG FIXES]
+1. APIS-54 - Fixed the bug that Data only be inserted into fixed database
+2. APIS-55 - Fixed the bug that connection method isn't correct
+3. APIS-60 - Fixed the bug that result of "SELECT 4 + '5.2'" will be round
+4. APIS-61 - Fixed the bug that return value of double type isn't correct
+5. APIS-62 - Fixed the bug that return values of column_info isn't in proper order
+6. APIS-64 - Fixed the bug that return value of DATA_TYPE isn't correct
+7. APIS-70 - Fixed the bug that return values of nullable are not correct
+8. APIS-71 - Fixed the bug that method of tables() can't return values
+9. APIS-73 - Fixed the bug that get_info(18) couldn't return database version
+10. APIS-78 - Fixed the bug that error doesn't appear when bound an error type to cubrid_lob_import method
+11. APIS-84 - Fixed the bug that table_info didn't report an error when the parameter was wrong
+12. APIS-86 - Fixed the bug that get_info can't support passing SQL_IDENTIFIER_QUOTE_CHAR parameter
+13. APIS-86 - Fixed the bug that error will appear when calling cubrid_lob_import method 1019 times
+
 Changes in DBD-cubrid 8.4.0         2011-11-15
 
   First public release of DBD::cubrid module. We provide the basic use to access CUBRID database.

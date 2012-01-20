@@ -1,10 +1,6 @@
 #!perl -w
-#
-#   $Id$ 
-#
 
 use DBI ();
-use DBI::Const::GetInfoType;
 use Test::More;
 use lib 't', '.';
 require 'lib.pl';
@@ -17,7 +13,7 @@ if ($@) {
     plan skip_all => "ERROR: $DBI::errstr. Can't continue test";
 }
 
-plan tests => 38;
+plan tests => 39;
 
 ok ($dbh->do("DROP TABLE IF EXISTS $table"));
 
@@ -32,55 +28,35 @@ ok ($dbh->do($create));
 
 ok ($sth = $dbh->prepare("INSERT INTO $table VALUES (?, ?)"));
 
-# Automatic type detection
-my $numericVal = 1;
-my $charVal = "Alligator Descartes";
-ok ($sth->execute($numericVal, $charVal));
-
-# Does the driver remember the automatically detected type?
+ok ($sth->execute(1, "Alligator Descartes"));
 ok ($sth->execute("3", "Jochen Wiedmann"));
 
-$numericVal = 2;
-$charVal = "Tim Bunce";
-ok ($sth->execute($numericVal, $charVal));
+ok ($sth->execute(2, "Tim Bunce"));
 
-# Now try the explicit type settings
 ok ($sth->bind_param(1, " 4"));
-
-# umlaut equivelant is vowel followed by 'e'
 ok ($sth->bind_param(2, 'Andreas Koenig'));
 ok ($sth->execute);
 
-# Works undef -> NULL?
 ok ($sth->bind_param(1, 5));
-
-ok ($sth->bind_param(2, undef));
-
+ok ($sth->bind_param(2, ''));
 ok ($sth->execute);
 
-ok ($sth->bind_param(1, undef));
-
-ok ($sth->bind_param(2, undef));
+ok ($sth->bind_param(1, ''));
+ok ($sth->bind_param(2, ''));
 
 ok ($sth->execute(-1, "abc"));
 
 ok ($dbh->do("INSERT INTO $table VALUES (6, '?')"));
-
-#ok ($dbh->do('SET @old_sql_mode = @@sql_mode, @@sql_mode = \'\''));
-
 ok ($dbh->do("INSERT INTO $table VALUES (7, '?')"));
 
-#ok ($dbh->do('SET @@sql_mode = @old_sql_mode'));
-
 ok ($sth = $dbh->prepare("SELECT * FROM $table ORDER BY id"));
-
 ok($sth->execute);
 
 ok ($sth->bind_columns(undef, \$id, \$name));
 
-$ref = $sth->fetch ; 
+$ref = $sth->fetch; 
 
-is $id,  -1, 'id set to -1'; 
+is $id, -1, 'id set to -1'; 
 
 cmp_ok $name, 'eq', 'abc', 'name eq abc'; 
 
@@ -102,7 +78,7 @@ cmp_ok $name, 'eq', 'Andreas Koenig', '$name set to Andreas Koenig';
 
 $ref = $sth->fetch;
 is $id, 5, 'id set to 5';
-#ok !defined($name), 'name not defined';
+cmp_ok $name, 'eq', '', 'name not defined';
 
 $ref = $sth->fetch;
 is $id, 6, 'id set to 6';
@@ -115,5 +91,4 @@ cmp_ok $name, 'eq', '?', "\$name set to '?'";
 ok ($dbh->do("DROP TABLE $table"));
 
 ok $sth->finish;
-
 ok $dbh->disconnect;

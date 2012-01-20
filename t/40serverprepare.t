@@ -56,10 +56,10 @@ my $sth2;
 ok($sth2 = $dbh->prepare('INSERT INTO t2 VALUES (?,?,?,?)'));
 
 #bind test values
-ok($sth2->bind_param(1, 101, DBI::SQL_INTEGER), "binding int");
-ok($sth2->bind_param(2, 102, DBI::SQL_SMALLINT), "binding smallint");
-ok($sth2->bind_param(3, 103, DBI::SQL_TINYINT), "binding tinyint");
-ok($sth2->bind_param(4, 104, DBI::SQL_INTEGER), "binding bigint");
+ok($sth2->bind_param(1, 101), "binding the first param");
+ok($sth2->bind_param(2, 102), "binding the second param");
+ok($sth2->bind_param(3, 103), "binding the third param");
+ok($sth2->bind_param(4, 104), "binding the fourth param");
 
 ok($sth2->execute(), "inserting data");
 

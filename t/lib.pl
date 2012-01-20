@@ -34,4 +34,12 @@ $test_dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port";
 $test_user = 'public';
 $test_passwd = '';
 
+$::COL_NULLABLE = 1;
+$::COL_KEY = 2;
+
+sub byte_string {
+    my $ret = join ("|", unpack ("C*", $_[0]));
+    return $ret;
+}
+
 1;

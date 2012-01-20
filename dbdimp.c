@@ -1,12 +1,42 @@
 /*
-	dbdimp.c
-	Copyright (c) 2011 Zhang Hui, China
-*/
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * - Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ *
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * - Neither the name of the <ORGANIZATION> nor the names of its contributors
+ *   may be used to endorse or promote products derived from this software without
+ *   specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ * OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ *
+ */
 
 #include "cubrid.h"
+#include <fcntl.h>
+
+#ifdef WIN32
+#define  open(file, flag, mode) PerlLIO_open3(file, flag, mode)
+#endif
 
 #define CUBRID_ER_MSG_LEN 1024
-#define CUBRID_BUFFER_LEN 1024
+#define CUBRID_BUFFER_LEN 4096
 
 static struct _error_message {
     int err_code;
@@ -14,8 +44,56 @@ static struct _error_message {
 } cubrid_err_msgs[] = {
     {CUBRID_ER_CANNOT_GET_COLUMN_INFO, "Cannot get column info"},
     {CUBRID_ER_CANNOT_FETCH_DATA, "Cannot fetch data"},
+    {CUBRID_ER_WRITE_FILE, "Cannot write file"},
+    {CUBRID_ER_READ_FILE, "Cannot read file"},
+    {CUBRID_ER_NOT_LOB_TYPE, "Not a lob type, can only support SQL_BLOB or SQL_CLOB"},
     {0, ""}
 };
+
+
+/***************************************************************************
+ * Private function prototypes
+ **************************************************************************/
+
+static int _dbd_db_end_tran (SV *dbh, imp_dbh_t *imp_dbh, int type);
+
+static int _cubrid_lob_bind (SV *sv,
+                             int index,
+                             IV sql_type,
+                             char *buf,
+                             T_CCI_ERROR *error);
+static int _cubrid_lob_new (int conn, 
+                            T_CCI_LOB *lob, 
+                            T_CCI_U_TYPE type, 
+                            T_CCI_ERROR *error);
+static long long _cubrid_lob_size( T_CCI_LOB lob, T_CCI_U_TYPE type );
+static int _cubrid_lob_write (int conn, 
+                              T_CCI_LOB lob, 
+                              T_CCI_U_TYPE type, 
+                              long long start_pos, 
+                              int length, 
+                              const char *buf, 
+                              T_CCI_ERROR *error);
+static int _cubrid_lob_read (int conn, 
+                             T_CCI_LOB lob, 
+                             T_CCI_U_TYPE type, 
+                             long long start_pos, 
+                             int length, 
+                             char *buf, 
+                             T_CCI_ERROR *error);
+static int _cubrid_lob_free (T_CCI_LOB lob, T_CCI_U_TYPE type);
+static int _cubrid_lob_close (T_CUBRID_LOB *lob);
+
+static int _cubrid_fetch_schema (AV *rows_av, 
+                                 int req_handle, 
+                                 int col_count, 
+                                 T_CCI_COL_INFO *col_info, 
+                                 T_CCI_ERROR *error);
+static int _cubrid_fetch_row (AV *av, 
+                              int req_handle, 
+                              int col_count, 
+                              T_CCI_COL_INFO *col_info, 
+                              T_CCI_ERROR *error);
 
 /***************************************************************************
  * 
@@ -177,12 +255,24 @@ dbd_db_login6( SV *dbh, imp_dbh_t *imp_dbh,
  *
  * Purpose: Commit/Rollback any pending transaction to the database.
  *
- * Input:   dbh - database handle being disconnected
+ * Input:   dbh - database handle being commit/rollback
  *          imp_dbh - drivers private database handle data
  *
  * Returns: TRUE for success, FALSE otherwise
  *
  **************************************************************************/
+
+int
+dbd_db_commit( SV *dbh, imp_dbh_t *imp_dbh )
+{
+    return _dbd_db_end_tran (dbh, imp_dbh, CCI_TRAN_COMMIT);
+}
+
+int
+dbd_db_rollback( SV *dbh, imp_dbh_t *imp_dbh )
+{
+    return _dbd_db_end_tran (dbh, imp_dbh, CCI_TRAN_ROLLBACK);
+}
 
 static int
 _dbd_db_end_tran( SV *dbh, imp_dbh_t *imp_dbh, int type )
@@ -195,18 +285,6 @@ _dbd_db_end_tran( SV *dbh, imp_dbh_t *imp_dbh, int type )
         return FALSE;
     }
     return TRUE;
-}
-
-int
-dbd_db_commit( SV *dbh, imp_dbh_t *imp_dbh )
-{
-    return _dbd_db_end_tran (dbh, imp_dbh, CCI_TRAN_COMMIT);
-}
-
-int
-dbd_db_rollback( SV *dbh, imp_dbh_t *imp_dbh )
-{
-    return _dbd_db_end_tran (dbh, imp_dbh, CCI_TRAN_ROLLBACK);
 }
 
 /***************************************************************************
@@ -333,7 +411,24 @@ dbd_db_FETCH_attrib(SV *dbh, imp_dbh_t *imp_dbh, SV *keysv)
     return sv_2mortal(retsv);
 }
 
-/******************************************************************************/
+/**************************************************************************
+ *
+ * Name:    dbd_db_last_insert_id
+ *
+ * Purpose: Returns a value identifying the row just inserted 
+ *
+ * Input:   dbh - database handle
+ *          imp_dbh - drivers private database handle data
+ *          catalog - NULL
+ *          schema  - NULL
+ *          table   - NULL
+ *          field   - NULL
+ *          attr    - NULL
+ *
+ * Returns: TRUE for success, FALSE otherwise
+ *
+ **************************************************************************/
+
 SV *
 dbd_db_last_insert_id( SV *dbh, imp_dbh_t *imp_dbh,
         SV *catalog, SV *schema, SV *table, SV *field, SV *attr )
@@ -358,7 +453,19 @@ dbd_db_last_insert_id( SV *dbh, imp_dbh_t *imp_dbh,
     return sv_2mortal (sv);
 }
 
-/******************************************************************************/
+/**************************************************************************
+ *
+ * Name:    dbd_db_ping
+ *
+ * Purpose: Check whether the database server is still running and the 
+ *          connection to it is still working.
+ *
+ * Input:   Nothing
+ *
+ * Returns: TRUE for success, FALSE otherwise
+ *
+ **************************************************************************/
+
 int
 dbd_db_ping( SV *dbh )
 {
@@ -435,10 +542,15 @@ dbd_st_prepare( SV *sth, imp_sth_t *imp_sth, char *statement, SV *attribs )
 
     D_imp_dbh_from_sth;
 
+    if ('\0' == *statement)
+        croak ("Cannot preapre empty statement");
+
     imp_sth->conn = imp_dbh->handle;
 
     imp_sth->col_count = -1;
     imp_sth->sql_type = 0;
+    imp_sth->affected_rows = -1;
+    imp_sth->lob = NULL;
 
     if ((res = cci_prepare (imp_sth->conn, statement, 0, &error)) < 0) {
         handle_error (sth, res, &error);
@@ -461,7 +573,7 @@ dbd_st_prepare( SV *sth, imp_sth_t *imp_sth, char *statement, SV *attribs )
  * Purpose: Called for execute the prepared SQL statement; our part of
  *          the statement handle constructor
  *
- * Input:   sth - statement handle being initialized
+ * Input:   sth - statement handle
  *          imp_sth - drivers private statement handle data
  *
  * Returns: TRUE for success, FALSE otherwise
@@ -498,9 +610,9 @@ dbd_st_execute( SV *sth, imp_sth_t *imp_sth )
     case SQLX_CMD_UPDATE:
     case SQLX_CMD_DELETE:
     case SQLX_CMD_CALL:
+    case SQLX_CMD_SELECT:
         imp_sth->affected_rows = res;
         break;
-    case SQLX_CMD_SELECT:
     default:
         imp_sth->affected_rows = -1;
     }
@@ -535,65 +647,6 @@ dbd_st_execute( SV *sth, imp_sth_t *imp_sth )
  *
  **************************************************************************/
 
-static AV *
-_dbd_st_fetch_row( SV *sth, imp_sth_t *imp_sth)
-{
-    int i, res, type, num, ind;
-    char *buf;
-    double ddata;
-    AV *av;
-
-    av = DBIS->get_fbav(imp_sth);
-
-    for (i = 0; i < imp_sth->col_count; i++) {
-        SV *sv = AvARRAY(av)[i];
-
-        type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, i+1);
-        
-        switch (type) {
-        case CCI_U_TYPE_INT:
-        case CCI_U_TYPE_SHORT:
-            if ((res = cci_get_data (imp_sth->handle, 
-                            i+1, CCI_A_TYPE_INT, &num, &ind)) < 0) {
-                handle_error (sth, res, NULL);
-                return Nullav;
-            }
-            if (ind < 0) {
-                (void) SvOK_off (sv);
-            } else {
-                sv_setiv (sv, num);
-            }
-            break;
-        case CCI_U_TYPE_FLOAT:
-        case CCI_U_TYPE_DOUBLE:
-            if ((res = cci_get_data (imp_sth->handle,
-                            i+1, CCI_A_TYPE_DOUBLE, &ddata, &ind)) < 0) {
-                handle_error (sth, res, NULL);
-                return Nullav;
-            }
-            if (ind < 0) {
-                (void) SvOK_off (sv);
-            } else {
-                sv_setuv (sv, ddata);
-            }
-            break;
-        default:
-            if ((res = cci_get_data (imp_sth->handle,
-                            i+1, CCI_A_TYPE_STR, &buf, &ind)) < 0) {
-                handle_error (sth, res, NULL);
-                return FALSE;
-            }
-            if (ind < 0) {
-                (void) SvOK_off (sv);
-            } else {
-                sv_setpvn (sv, buf, strlen(buf));
-            }
-        }
-    }
-
-    return av;
-}
-
 AV *
 dbd_st_fetch( SV *sth, imp_sth_t *imp_sth )
 {
@@ -618,7 +671,15 @@ dbd_st_fetch( SV *sth, imp_sth_t *imp_sth )
         return Nullav;
     }
 
-    av = _dbd_st_fetch_row (sth, imp_sth);
+    av = DBIS->get_fbav(imp_sth);
+    if ((res = _cubrid_fetch_row (av, 
+                                  imp_sth->handle, 
+                                  imp_sth->col_count, 
+                                  imp_sth->col_info, 
+                                  &error)) < 0) {
+        handle_error (sth, res, &error);
+        return Nullav;
+    }
 
     res = cci_cursor (imp_sth->handle, 1, CCI_CURSOR_CURRENT, &error);
     if (res < 0 && res != CCI_ER_NO_MORE_DATA) {
@@ -635,7 +696,7 @@ dbd_st_fetch( SV *sth, imp_sth_t *imp_sth )
  *
  * Purpose: Called for freeing a CUBRID result
  *
- * Input:   sth - statement handle being initialized
+ * Input:   sth - statement handle being finished
  *          imp_sth - drivers private statement handle data
  *
  * Returns: TRUE for success, FALSE otherwise
@@ -659,7 +720,7 @@ dbd_st_finish( SV *sth, imp_sth_t *imp_sth )
  *
  * Purpose: Our part of the statement handles destructor
  *
- * Input:   sth - statement handle being initialized
+ * Input:   sth - statement handle being destroyed
  *          imp_sth - drivers private statement handle data
  *
  * Returns: Nothing
@@ -670,6 +731,18 @@ void
 dbd_st_destroy( SV *sth, imp_sth_t *imp_sth )
 {
     if (imp_sth->handle) {
+        if (imp_sth->lob) {
+            int i;
+            for (i = 0; i < imp_sth->affected_rows; i++) {
+                if(imp_sth->lob[i]) {
+                    _cubrid_lob_close (imp_sth->lob[i]);
+                }
+            }
+
+            free (imp_sth->lob);
+            imp_sth->lob = NULL;
+        }
+
         cci_close_req_handle (imp_sth->handle);
         imp_sth->handle = 0;
 
@@ -710,7 +783,7 @@ dbd_st_STORE_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv, SV *valuesv )
  *
  * Purpose: Retrieves a statement handles attributes
  *
- * Input:   sth - statement handle being initialized
+ * Input:   sth - statement handle
  *          imp_sth - drivers private statement handle data
  *          keysv - attribute name
  *
@@ -733,7 +806,8 @@ dbd_st_FETCH_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv )
             AV *av = newAV ();
             retsv = newRV_inc (sv_2mortal ((SV *)av));
             for (i = 1; i<= imp_sth->col_count; i++) {
-                strcpy (col_name, CCI_GET_RESULT_INFO_NAME (imp_sth->col_info, i));
+                strcpy (col_name, 
+                        CCI_GET_RESULT_INFO_NAME (imp_sth->col_info, i));
                 av_store (av, i-1, newSVpv (col_name, 0));
             }
         }
@@ -764,7 +838,7 @@ dbd_st_FETCH_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv )
             int not_null;
             retsv = newRV_inc (sv_2mortal ((SV *)av));
             for (i = 1; i<= imp_sth->col_count; i++) {
-                not_null = CCI_GET_RESULT_INFO_PRECISION (imp_sth->col_info, i);
+                not_null = CCI_GET_RESULT_INFO_IS_NON_NULL (imp_sth->col_info, i) ? 0 : 1;
                 av_store (av, i-1, newSViv (not_null));
             }
         }
@@ -787,12 +861,12 @@ dbd_st_FETCH_attrib( SV *sth, imp_sth_t *imp_sth, SV *keysv )
 
 /***************************************************************************
  *
- * Name:    dbd_st_blob_read
+ * Name:    dbd_st_blob_read (Not implement now)
  *
  * Purpose: Used for blob reads if the statement handles blob 
  *
  * Input:   sth - statement handle from which a blob will be 
- *                  fetched (currently not supported by DBD::cubrid)
+ *                fetched (currently not supported by DBD::cubrid)
  *          imp_sth - drivers private statement handle data
  *          field - field number of the blob
  *          offset - the offset of the field, where to start reading
@@ -818,7 +892,20 @@ dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth,
     return FALSE;
 }
 
-/**************************************************************************/
+/***************************************************************************
+ *
+ * Name:    dbd_st_rows
+ *
+ * Purpose: used to get the number of rows affected by the SQL statement
+ *          (INSERT, DELETE, UPDATE).
+ *
+ * Input:   sth - statement handle
+ *          imp_sth - drivers private statement handle data
+ *
+ * Returns: Number of rows affected by the SQL statement for success.
+ *          -1, when SQL statement is not INSERT, DELETE or UPDATE.
+ *
+ **************************************************************************/
 
 int
 dbd_st_rows( SV * sth, imp_sth_t * imp_sth )
@@ -832,7 +919,7 @@ dbd_st_rows( SV * sth, imp_sth_t * imp_sth )
  *
  * Purpose: Binds a statement value to a parameter
  *
- * Input:   sth - statement handle being initialized
+ * Input:   sth - statement handle
  *          imp_sth - drivers private statement handle data
  *          param - parameter number, counting starts with 1
  *          value - value being inserted for parameter "param"
@@ -853,6 +940,7 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
     int res;
     char *bind_value = NULL;
     STRLEN bind_value_len;
+    T_CCI_ERROR error;
 
     int index = SvIV(param);
     if (index < 1 || index > DBIc_NUM_PARAMS(imp_sth)) {
@@ -862,7 +950,23 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
 
     bind_value = SvPV (value, bind_value_len);
 
-    if ((res = cci_bind_param (imp_sth->handle, index, CCI_A_TYPE_STR,
+    if (sql_type == SQL_BLOB || sql_type == SQL_CLOB) {
+
+        if ((res = _cubrid_lob_bind (sth, 
+                                     index, 
+                                     sql_type, 
+                                     bind_value, 
+                                     &error)) < 0) {
+            handle_error (sth, res, &error);
+            return FALSE;
+        }
+
+        return TRUE;
+    }
+
+
+    if ((res = cci_bind_param (imp_sth->handle, 
+                    index, CCI_A_TYPE_STR,
                     bind_value, CCI_U_TYPE_CHAR, 0)) < 0) {
         handle_error(sth, res, NULL);
         return FALSE;
@@ -871,3 +975,603 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
     return TRUE;
 }
 
+/* Large object functions */
+
+/**************************************************************************/
+
+int
+cubrid_st_lob_get( SV *sth, int col )
+{
+    int res, ind;
+    T_CCI_ERROR error;
+    int i = 0;
+    long long size;
+
+    D_imp_sth (sth);
+
+    if (col < 0 || col > DBIc_NUM_FIELDS (imp_sth)) {
+        handle_error (sth, CCI_ER_COLUMN_INDEX, NULL);
+        return FALSE;
+    }
+
+    if (imp_sth->sql_type != SQLX_CMD_SELECT) {
+        handle_error (sth, CCI_ER_NO_MORE_DATA, NULL);
+        return FALSE;
+    }
+
+    res = cci_cursor (imp_sth->handle, 0, CCI_CURSOR_CURRENT, &error);
+    if (res == CCI_ER_NO_MORE_DATA) {
+        return TRUE;
+    }
+    else if (res < 0) {
+        handle_error (sth, res, &error);
+        return FALSE;
+    }
+
+    imp_sth->lob = (T_CUBRID_LOB **) malloc (
+            (imp_sth->affected_rows + 1) * sizeof(T_CUBRID_LOB *)
+            );
+
+    while (1) {
+
+        if ((res = cci_fetch(imp_sth->handle, &error)) < 0) {
+            handle_error (sth, res, &error);
+            return FALSE;
+        }
+
+        imp_sth->lob[i] = (T_CUBRID_LOB *) malloc (sizeof (T_CUBRID_LOB));
+
+        if (CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, col)
+                            == CCI_U_TYPE_BLOB) {
+            imp_sth->lob[i]->type = CCI_U_TYPE_BLOB;
+            if ((res = cci_get_data (imp_sth->handle,
+                                     col,
+                                     CCI_A_TYPE_BLOB,
+                                     (void *)&imp_sth->lob[i]->lob,
+                                     &ind)) < 0) {
+                handle_error (sth, res, NULL);
+                return FALSE;
+            }
+        }
+        else {
+            imp_sth->lob[i]->type = CCI_U_TYPE_BLOB;
+            if ((res = cci_get_data (imp_sth->handle,
+                                     col,
+                                     CCI_A_TYPE_CLOB,
+                                     (void *)&imp_sth->lob[i]->lob,
+                                     (&ind))) < 0) {
+                handle_error (sth, res, NULL);
+                return FALSE;
+            }
+        }
+
+        size = _cubrid_lob_size (imp_sth->lob[i]->lob, imp_sth->lob[i]->type);
+        i++;
+
+        res = cci_cursor (imp_sth->handle, 1, CCI_CURSOR_CURRENT, &error);
+        if (res == CCI_ER_NO_MORE_DATA) {
+            break;
+        }
+        else if (res < 0) {
+            handle_error (sth, res, &error);
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+int
+cubrid_st_lob_export( SV *sth, int index, char *filename )
+{
+    char buf[CUBRID_BUFFER_LEN] = {'\0'};
+    int fd, res, size;
+    long long pos = 0, lob_size;
+    T_CCI_ERROR error;
+
+    D_imp_sth (sth);
+
+    if (imp_sth->lob[index-1]->lob == NULL) {
+        handle_error (sth, CCI_ER_INVALID_LOB_HANDLE, NULL);
+        return FALSE;
+    }
+
+    if ((fd = open (filename, O_CREAT | O_WRONLY | O_TRUNC, 0666)) < 0) {
+        handle_error (sth, CCI_ER_FILE, NULL);
+        return FALSE;
+    }
+
+    lob_size = _cubrid_lob_size (imp_sth->lob[index-1]->lob, imp_sth->lob[index-1]->type);
+
+    while (1) {
+        if ((size = _cubrid_lob_read (imp_sth->conn, 
+                                      imp_sth->lob[index-1]->lob, 
+                                      imp_sth->lob[index-1]->type, 
+                                      pos, 
+                                      CUBRID_BUFFER_LEN, 
+                                      buf, 
+                                      &error)) < 0) {
+            res = size;
+            goto ER_LOB_EXPORT;
+        }
+
+        if ((res = write (fd, buf, size)) < 0) {
+            res = CUBRID_ER_WRITE_FILE;
+            goto ER_LOB_EXPORT;
+        }
+
+        pos += size;
+        if (pos == lob_size) {
+            break;
+        }
+    }
+
+    close (fd);
+    return TRUE;
+
+ER_LOB_EXPORT:
+    if (fd >= 0) {
+        close (fd);
+        unlink (filename);
+    }
+
+    handle_error (sth, res, &error);
+    return FALSE;
+}
+
+int
+cubrid_st_lob_import( SV *sth, 
+                      int index,
+                      char *filename,
+                      IV sql_type )
+{
+    T_CCI_ERROR error;
+    T_CCI_LOB lob;
+    T_CCI_U_TYPE u_type;
+    T_CCI_A_TYPE a_type;
+    int fd, size, res;
+    long long pos = 0;
+    char buf[CUBRID_BUFFER_LEN] = {'\0'};
+
+    D_imp_sth (sth);
+
+    if (sql_type == SQL_BLOB) {
+        u_type = CCI_U_TYPE_BLOB;
+        a_type = CCI_A_TYPE_BLOB;
+    }
+    else if (sql_type == SQL_CLOB) {
+        u_type = CCI_U_TYPE_CLOB;
+        a_type = CCI_A_TYPE_CLOB;
+    }
+    else {
+        handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
+        return FALSE;
+    }
+
+    if ((res = _cubrid_lob_new (imp_sth->conn, 
+                                &lob,
+                                u_type, 
+                                &error)) < 0 ) {
+        handle_error (sth, res, &error);
+        return FALSE;
+    }
+
+    if ((fd = open (filename, O_RDONLY, 0400)) < 0) {
+        res = CCI_ER_FILE;
+        goto ER_LOB_IMPORT;
+    }
+
+    while (1) {
+        if ((size = read (fd, buf, CUBRID_BUFFER_LEN)) < 0) {
+            res = CUBRID_ER_READ_FILE;
+            goto ER_LOB_IMPORT;
+        }
+        
+        if (size == 0) {
+            break;
+        }
+
+        if ((res = _cubrid_lob_write (imp_sth->conn, 
+                                      lob, 
+                                      u_type,
+                                      pos, 
+                                      size, 
+                                      buf, 
+                                      &error)) < 0) {
+            goto ER_LOB_IMPORT;
+        }
+
+        pos += size;
+    }
+
+    if ((res = cci_bind_param (imp_sth->handle, 
+                               index, 
+                               a_type, 
+                               (void *)lob,
+                               u_type, 
+                               CCI_BIND_PTR)) < 0) {
+        goto ER_LOB_IMPORT;
+    }
+
+    close (fd);
+    return TRUE;
+
+ER_LOB_IMPORT:
+    if (fd >= 0) {
+        close (fd);
+    }
+
+    _cubrid_lob_free (lob, u_type);
+    handle_error (sth, res, &error);
+    return FALSE;
+}
+
+int
+cubrid_st_lob_close (SV *sth)
+{
+    D_imp_sth (sth);
+
+    if (imp_sth->lob) {
+        int i;
+        for (i = 0; i < imp_sth->affected_rows; i++) {
+            if (imp_sth->lob[i]) {
+                _cubrid_lob_close (imp_sth->lob[i]);
+            }
+        }
+
+        free (imp_sth->lob);
+        imp_sth->lob = NULL;
+    }
+
+    return TRUE;
+}
+
+static int
+_cubrid_lob_bind( SV *sth, 
+                  int index, 
+                  IV sql_type,
+                  char *buf, 
+                  T_CCI_ERROR *error )
+{
+    T_CCI_LOB lob;
+    T_CCI_U_TYPE u_type;
+    T_CCI_A_TYPE a_type;
+    int res;
+
+    D_imp_sth (sth);
+   
+    if (sql_type == SQL_BLOB) {
+        u_type = CCI_U_TYPE_BLOB;
+        a_type = CCI_A_TYPE_BLOB;
+    } else {
+        u_type = CCI_U_TYPE_CLOB;
+        a_type = CCI_A_TYPE_CLOB;
+    }
+
+    if ((res = _cubrid_lob_new (imp_sth->conn, 
+                                &lob, 
+                                u_type,
+                                error)) < 0 ) {
+        return res;
+    }
+
+    if ((res = _cubrid_lob_write (imp_sth->conn, 
+                                  lob, 
+                                  u_type,
+                                  0, 
+                                  strlen(buf), 
+                                  buf, 
+                                  error)) < 0) {
+        _cubrid_lob_free (lob, u_type);
+        return res;
+    }
+
+    if ((res = 
+        cci_bind_param (imp_sth->handle, 
+            index, a_type, (void *)lob, u_type, CCI_BIND_PTR)) < 0)
+    {
+        _cubrid_lob_free (lob, u_type);
+        return res;
+    }
+
+    return 0;
+}
+
+static int 
+_cubrid_lob_new( int conn, 
+                 T_CCI_LOB *lob, 
+                 T_CCI_U_TYPE type, 
+                 T_CCI_ERROR *error )
+{
+    return (type == CCI_U_TYPE_BLOB) ? 
+        cci_blob_new (conn, lob, error) : cci_clob_new (conn, lob, error);
+}
+
+static long long
+_cubrid_lob_size( T_CCI_LOB lob, T_CCI_U_TYPE type )
+{
+    return (type == CCI_U_TYPE_BLOB) ? 
+        cci_blob_size (lob) : cci_clob_size (lob);
+}
+
+static int
+_cubrid_lob_write( int conn, 
+                   T_CCI_LOB lob, 
+                   T_CCI_U_TYPE type, 
+                   long long start_pos, 
+                   int length, 
+                   const char *buf,
+                   T_CCI_ERROR *error )
+{
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_write (conn, lob, start_pos, length, buf, error) :
+        cci_clob_write (conn, lob, start_pos, length, buf, error);
+}
+
+static int
+_cubrid_lob_read( int conn, 
+                  T_CCI_LOB lob, 
+                  T_CCI_U_TYPE type, 
+                  long long start_pos, 
+                  int length, 
+                  char *buf, 
+                  T_CCI_ERROR *error )
+{
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_read (conn, lob, start_pos, length, buf, error) :
+        cci_clob_read (conn, lob, start_pos, length, buf, error);
+}
+
+static int 
+_cubrid_lob_free( T_CCI_LOB lob, T_CCI_U_TYPE type )
+{
+    return (type == CCI_U_TYPE_BLOB) ?
+        cci_blob_free (lob) : cci_clob_free (lob);
+}
+
+static int
+_cubrid_lob_close( T_CUBRID_LOB *lob )
+{
+    if (lob->lob) {
+        _cubrid_lob_free (lob->lob, lob->type);
+    }
+
+    free (lob);
+}
+
+/* catalog functions */
+
+/*************************************************************************/
+SV *
+_cubrid_primary_key( SV *dbh, char *table )
+{
+    int res, req_handle, col_count;
+    T_CCI_COL_INFO *col_info;
+    T_CCI_CUBRID_STMT sql_type;
+    T_CCI_ERROR error;
+    AV *rows_av;
+    SV *rows_rvav;
+
+    D_imp_dbh (dbh);
+
+    if ((res = cci_schema_info (imp_dbh->handle, 
+                                CCI_SCH_PRIMARY_KEY, 
+                                table, 
+                                NULL, 
+                                0, 
+                                &error)) < 0) {
+        goto ER_CUBRID_PRIMARY_KEY;
+    }
+
+    req_handle = res;
+
+    if (!(col_info = cci_get_result_info (req_handle, &sql_type, &col_count))) {
+        handle_error (dbh, CUBRID_ER_CANNOT_GET_COLUMN_INFO, NULL);
+        return Nullsv;
+    }
+
+    rows_av = newAV ();
+
+    if ((res = _cubrid_fetch_schema (rows_av, 
+                                     req_handle, 
+                                     col_count, 
+                                     col_info, 
+                                     &error)) < 0) {
+        goto ER_CUBRID_PRIMARY_KEY;
+    }
+
+    cci_close_req_handle (req_handle);
+    rows_rvav = sv_2mortal(newRV_noinc((SV *)rows_av));
+    return rows_rvav;
+
+ER_CUBRID_PRIMARY_KEY:
+    cci_close_req_handle (req_handle);
+    if (rows_av != Nullav) {
+        av_undef(rows_av);
+    }
+    handle_error (dbh, res, &error);
+    return Nullsv;
+}
+
+SV *
+_cubrid_foreign_key( SV *dbh, char *pk_table, char *fk_table)
+{
+    int res, req_handle, col_count;
+    T_CCI_COL_INFO *col_info;
+    T_CCI_CUBRID_STMT sql_type;
+    T_CCI_ERROR error;
+    AV *rows_av;
+    SV *rows_rvav;
+
+    D_imp_dbh (dbh);
+
+    if (strcmp(pk_table, "") != 0  && strcmp (fk_table, "") != 0) {
+        if ((res = cci_schema_info (imp_dbh->handle, 
+                                      CCI_SCH_CROSS_REFERENCE,
+                                      pk_table, 
+                                      fk_table, 
+                                      0, 
+                                      &error)) < 0) {
+            goto ER_CUBRID_FOREIGN_KEY;
+        }
+    }
+    else if (strcmp(pk_table, "") != 0  && strcmp (fk_table, "") == 0) {
+        if ((res = cci_schema_info (imp_dbh->handle, 
+                                    CCI_SCH_EXPORTED_KEYS, 
+                                    pk_table, 
+                                    NULL, 
+                                    0, 
+                                    &error)) < 0) {
+            goto ER_CUBRID_FOREIGN_KEY;
+        }
+    }
+    else if (strcmp(pk_table, "") == 0  && strcmp (fk_table, "") != 0) {
+        if ((res = cci_schema_info (imp_dbh->handle, 
+                                    CCI_SCH_IMPORTED_KEYS, 
+                                    fk_table,
+                                    NULL,
+                                    0,
+                                    &error)) < 0) {
+            goto ER_CUBRID_FOREIGN_KEY;
+        }
+    }
+
+    req_handle = res;
+
+    if (!(col_info = cci_get_result_info (req_handle, &sql_type, &col_count))) {
+        handle_error (dbh, CUBRID_ER_CANNOT_GET_COLUMN_INFO, NULL);
+        return Nullsv;
+    }
+
+    rows_av = newAV ();
+
+    if ((res = _cubrid_fetch_schema (rows_av, 
+                                     req_handle, 
+                                     col_count, 
+                                     col_info, 
+                                     &error)) < 0) {
+        goto ER_CUBRID_FOREIGN_KEY;
+    }
+
+    cci_close_req_handle (req_handle);
+    rows_rvav = sv_2mortal(newRV_noinc((SV *)rows_av));
+    return rows_rvav;
+
+ER_CUBRID_FOREIGN_KEY:
+    cci_close_req_handle (req_handle);
+    if (rows_av != Nullav) {
+        av_undef(rows_av);
+    }
+    handle_error (dbh, res, &error);
+    return Nullsv;
+}
+
+static int
+_cubrid_fetch_schema( AV *rows_av, 
+                      int req_handle, 
+                      int col_count, 
+                      T_CCI_COL_INFO *col_info, 
+                      T_CCI_ERROR *error )
+{
+    int res;
+
+    while (1) {
+        AV *copy_row, *fetch_av;
+        int i = 0;
+
+        res = cci_cursor (req_handle, 1, CCI_CURSOR_CURRENT, error);
+        if (res == CCI_ER_NO_MORE_DATA) {
+            break;
+        }
+        else if (res < 0) {
+            return res;
+        }
+
+        if ((res = cci_fetch (req_handle, error)) < 0) {
+            return res;
+        }
+
+        fetch_av = newAV();
+        while (i < col_count) {
+            av_store (fetch_av, i, newSV(0));
+            i++;
+        }
+
+        if ((res = _cubrid_fetch_row (fetch_av,
+                                      req_handle, 
+                                      col_count, 
+                                      col_info, 
+                                      error)) < 0) {
+
+            av_undef (fetch_av);
+            return res;
+        }
+
+        copy_row = av_make (AvFILL(fetch_av) + 1, AvARRAY(fetch_av));
+        av_push (rows_av, newRV_noinc ((SV *)copy_row));
+        
+        av_undef (fetch_av);
+    }
+
+    return 0;
+}
+
+static int
+_cubrid_fetch_row( AV *av, 
+                   int req_handle, 
+                   int col_count, 
+                   T_CCI_COL_INFO *col_info, 
+                   T_CCI_ERROR *error )
+{
+    int i, res, type, num, ind;
+    char *buf;
+    double ddata;
+
+    for (i = 0; i < col_count; i++) {
+        SV *sv = AvARRAY(av)[i];
+
+        type = CCI_GET_RESULT_INFO_TYPE (col_info, i+1);
+        
+        switch (type) {
+        case CCI_U_TYPE_INT:
+        case CCI_U_TYPE_SHORT:
+            if ((res = cci_get_data (req_handle, 
+                            i+1, CCI_A_TYPE_INT, &num, &ind)) < 0) {
+                return res;
+            }
+
+            if (ind < 0) {
+                (void) SvOK_off (sv);
+            } else {
+                sv_setiv (sv, num);
+            }
+            break;
+        case CCI_U_TYPE_FLOAT:
+        case CCI_U_TYPE_DOUBLE:
+        case CCI_U_TYPE_NUMERIC:
+            if ((res = cci_get_data (req_handle,
+                            i+1, CCI_A_TYPE_DOUBLE, &ddata, &ind)) < 0) {
+                return res;
+            }
+
+            if (ind < 0) {
+                (void) SvOK_off (sv);
+            } else {
+                sv_setnv (sv, ddata);
+            }
+            break;
+        default:
+            if ((res = cci_get_data (req_handle,
+                            i+1, CCI_A_TYPE_STR, &buf, &ind)) < 0) {
+                return res;
+            }
+            if (ind < 0) {
+                (void) SvOK_off (sv);
+            } else {
+                sv_setpvn (sv, buf, strlen(buf));
+            }
+        }
+    }
+
+    return 0;
+}
