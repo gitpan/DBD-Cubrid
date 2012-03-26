@@ -63,7 +63,7 @@ struct imp_sth_st {
         int     affected_rows;
         T_CCI_CUBRID_STMT   sql_type;
         T_CCI_COL_INFO      *col_info;
-        T_CUBRID_LOB        **lob;
+        T_CUBRID_LOB        *lob;
 };
 
 /* ------ define functions and external variables ------ */

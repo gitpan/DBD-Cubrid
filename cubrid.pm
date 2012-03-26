@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '8.4.0.0002';
+    $VERSION = '8.4.1.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -122,7 +122,7 @@ use strict;
         if ($connect_attr{DATABASE}) {
             $dbname = $connect_attr{DATABASE};
         } else {
-            $dbname = 'demodb';
+            $dbname = '';
         }
 
         my $connect_dsn = "cci:CUBRID:$host:$port:$dbname";
@@ -1110,7 +1110,8 @@ you'd better use this method when you don't use the lob object any more.
 =head3 B<AutoCommit> (boolean)
 
 Supported by DBD::cubrid as proposed by DBI. In CUBRID 8.4.0, the default of AutoCommit is OFF.
-It is highly recommended that you explicitly set it when calling L</connect>.
+And in CUBRID 8.4.1, the default of Autocommit is ON. It is highly recommended that you 
+explicitly set it when calling L</connect>.
 
 =head3 B<Name> (string, read-only)
 

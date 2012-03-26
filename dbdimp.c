@@ -82,7 +82,6 @@ static int _cubrid_lob_read (int conn,
                              char *buf, 
                              T_CCI_ERROR *error);
 static int _cubrid_lob_free (T_CCI_LOB lob, T_CCI_U_TYPE type);
-static int _cubrid_lob_close (T_CUBRID_LOB *lob);
 
 static int _cubrid_fetch_schema (AV *rows_av, 
                                  int req_handle, 
@@ -734,9 +733,7 @@ dbd_st_destroy( SV *sth, imp_sth_t *imp_sth )
         if (imp_sth->lob) {
             int i;
             for (i = 0; i < imp_sth->affected_rows; i++) {
-                if(imp_sth->lob[i]) {
-                    _cubrid_lob_close (imp_sth->lob[i]);
-                }
+                _cubrid_lob_free (imp_sth->lob[i].lob, imp_sth->lob[i].type);
             }
 
             free (imp_sth->lob);
@@ -985,11 +982,11 @@ cubrid_st_lob_get( SV *sth, int col )
     int res, ind;
     T_CCI_ERROR error;
     int i = 0;
-    long long size;
+    T_CCI_U_TYPE u_type;
 
     D_imp_sth (sth);
 
-    if (col < 0 || col > DBIc_NUM_FIELDS (imp_sth)) {
+    if (col < 1 || col > DBIc_NUM_FIELDS (imp_sth)) {
         handle_error (sth, CCI_ER_COLUMN_INDEX, NULL);
         return FALSE;
     }
@@ -1008,8 +1005,14 @@ cubrid_st_lob_get( SV *sth, int col )
         return FALSE;
     }
 
-    imp_sth->lob = (T_CUBRID_LOB **) malloc (
-            (imp_sth->affected_rows + 1) * sizeof(T_CUBRID_LOB *)
+    u_type = CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, col);
+    if (!(u_type == CCI_U_TYPE_BLOB ||  u_type == CCI_U_TYPE_CLOB)) {
+        handle_error (sth, CUBRID_ER_NOT_LOB_TYPE, NULL);
+        return FALSE;
+    }
+
+    imp_sth->lob = (T_CUBRID_LOB *) malloc (
+            imp_sth->affected_rows * sizeof (T_CUBRID_LOB)
             );
 
     while (1) {
@@ -1019,33 +1022,29 @@ cubrid_st_lob_get( SV *sth, int col )
             return FALSE;
         }
 
-        imp_sth->lob[i] = (T_CUBRID_LOB *) malloc (sizeof (T_CUBRID_LOB));
-
-        if (CCI_GET_RESULT_INFO_TYPE (imp_sth->col_info, col)
-                            == CCI_U_TYPE_BLOB) {
-            imp_sth->lob[i]->type = CCI_U_TYPE_BLOB;
+        if ( u_type == CCI_U_TYPE_BLOB) {
+            imp_sth->lob[i].type = CCI_U_TYPE_BLOB;
             if ((res = cci_get_data (imp_sth->handle,
                                      col,
                                      CCI_A_TYPE_BLOB,
-                                     (void *)&imp_sth->lob[i]->lob,
+                                     (void *)&imp_sth->lob[i].lob,
                                      &ind)) < 0) {
                 handle_error (sth, res, NULL);
                 return FALSE;
             }
         }
         else {
-            imp_sth->lob[i]->type = CCI_U_TYPE_BLOB;
+            imp_sth->lob[i].type = CCI_U_TYPE_BLOB;
             if ((res = cci_get_data (imp_sth->handle,
                                      col,
                                      CCI_A_TYPE_CLOB,
-                                     (void *)&imp_sth->lob[i]->lob,
+                                     (void *)&imp_sth->lob[i].lob,
                                      (&ind))) < 0) {
                 handle_error (sth, res, NULL);
                 return FALSE;
             }
         }
 
-        size = _cubrid_lob_size (imp_sth->lob[i]->lob, imp_sth->lob[i]->type);
         i++;
 
         res = cci_cursor (imp_sth->handle, 1, CCI_CURSOR_CURRENT, &error);
@@ -1071,7 +1070,7 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
 
     D_imp_sth (sth);
 
-    if (imp_sth->lob[index-1]->lob == NULL) {
+    if (imp_sth->lob[index-1].lob == NULL) {
         handle_error (sth, CCI_ER_INVALID_LOB_HANDLE, NULL);
         return FALSE;
     }
@@ -1081,12 +1080,12 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
         return FALSE;
     }
 
-    lob_size = _cubrid_lob_size (imp_sth->lob[index-1]->lob, imp_sth->lob[index-1]->type);
+    lob_size = _cubrid_lob_size (imp_sth->lob[index-1].lob, imp_sth->lob[index-1].type);
 
     while (1) {
         if ((size = _cubrid_lob_read (imp_sth->conn, 
-                                      imp_sth->lob[index-1]->lob, 
-                                      imp_sth->lob[index-1]->type, 
+                                      imp_sth->lob[index-1].lob, 
+                                      imp_sth->lob[index-1].type, 
                                       pos, 
                                       CUBRID_BUFFER_LEN, 
                                       buf, 
@@ -1214,9 +1213,7 @@ cubrid_st_lob_close (SV *sth)
     if (imp_sth->lob) {
         int i;
         for (i = 0; i < imp_sth->affected_rows; i++) {
-            if (imp_sth->lob[i]) {
-                _cubrid_lob_close (imp_sth->lob[i]);
-            }
+            _cubrid_lob_free (imp_sth->lob[i].lob, imp_sth->lob[i].type);
         }
 
         free (imp_sth->lob);
@@ -1327,16 +1324,6 @@ _cubrid_lob_free( T_CCI_LOB lob, T_CCI_U_TYPE type )
 {
     return (type == CCI_U_TYPE_BLOB) ?
         cci_blob_free (lob) : cci_clob_free (lob);
-}
-
-static int
-_cubrid_lob_close( T_CUBRID_LOB *lob )
-{
-    if (lob->lob) {
-        _cubrid_lob_free (lob->lob, lob->type);
-    }
-
-    free (lob);
 }
 
 /* catalog functions */
