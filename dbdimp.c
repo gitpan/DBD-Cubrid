@@ -188,7 +188,7 @@ handle_error( SV* h, int e, T_CCI_ERROR *error )
     errstr = DBIc_ERRSTR (imp_xxh);
     sv_setiv (DBIc_ERR (imp_xxh), (IV)e);
 
-    if (e < -2000) {
+    if (e < CUBRID_ER_START) {
         get_error_msg (e, msg);
     } else if (cci_get_error_msg (e, error, msg, CUBRID_ER_MSG_LEN) < 0) {
         snprintf (msg, CUBRID_ER_MSG_LEN, "Unknown Error");
@@ -229,10 +229,17 @@ dbd_db_login6( SV *dbh, imp_dbh_t *imp_dbh,
     int  con, res;
     T_CCI_ERROR error;
 
+#ifdef WINDOWS
     if ((con = cci_connect_with_url (dbname, uid, pwd)) < 0) {
         handle_error (dbh, con, NULL);
         return FALSE;
     }
+#else
+    if ((con = cci_connect_with_url_ex (dbname, uid, pwd, &error)) < 0) {
+        handle_error (dbh, con, &error);
+        return FALSE;
+    }
+#endif
 
     imp_dbh->handle = con;
 
@@ -972,6 +979,132 @@ dbd_bind_ph( SV *sth, imp_sth_t *imp_sth, SV *param, SV *value,
     return TRUE;
 }
 
+
+/***************************************************************************
+ *
+ * Name:    dbd_db_quote
+ *
+ * Purpose: Properly quotes a value
+ *
+ * Input:   dbh - statement handle
+ *          str - input string
+ *          type - not used
+ *
+ * Returns:  SV, contain the converted string.
+ *
+ **************************************************************************/
+
+#ifdef WINDOWS
+SV* dbd_db_quote(SV *dbh, SV *str, SV *type)
+{
+    dTHX;
+    SV *result;
+
+    T_CCI_ERROR error;
+    int res;
+
+    if (SvGMAGICAL(str))
+        mg_get(str);
+
+    if (!SvOK(str))
+        return Nullsv;
+    else
+    {
+        char *escaped_string = NULL, *unescaped_string = NULL;
+        STRLEN len;
+        STRLEN escaped_str_len = 0;
+        int i = 0;
+        char *s = NULL;
+
+        D_imp_dbh(dbh);
+
+        unescaped_string = SvPV (str, len);
+        escaped_string = (char *) malloc (len * 2 + 16);
+        if (!escaped_string)
+        {
+            handle_error (dbh, CCI_ER_NO_MORE_MEMORY, NULL);
+            return Nullsv;
+        }
+
+        memset (escaped_string, 0, len * 2 + 16);
+
+        escaped_string[0] = '\'';
+
+        s = escaped_string + 1;
+
+
+        for (i = 0; i < len; i++) {
+            if (unescaped_string[i] == '\'') {
+                *s++ = '\'';
+                *s++ = '\'';
+                escaped_str_len = escaped_str_len + 2;
+            } else {
+                *s++ = unescaped_string[i];
+                escaped_str_len++;
+            }
+        }
+        *s++ = '\'';
+        *s = '\0';
+        escaped_str_len = escaped_str_len + 2;
+
+        result = newSVpvn (escaped_string, escaped_str_len);
+        free (escaped_string);
+    }
+
+    return result;
+}
+#else
+SV* dbd_db_quote(SV *dbh, SV *str, SV *type)
+{
+    dTHX;
+    SV *result;
+
+    T_CCI_ERROR error;
+    int res;
+
+    if (SvGMAGICAL(str))
+        mg_get(str);
+
+    if (!SvOK(str))
+        return Nullsv;
+    else
+    {
+        char *escaped_string = NULL, *unescaped_string = NULL;
+        STRLEN len;
+
+        D_imp_dbh(dbh);
+
+        unescaped_string = SvPV (str, len);
+        escaped_string = (char *) malloc (len * 2 + 16);
+        if (!escaped_string)
+        {
+            handle_error (dbh, CCI_ER_NO_MORE_MEMORY, NULL);
+            return Nullsv;
+        }
+
+        memset (escaped_string, 0, len * 2 + 16);
+
+        escaped_string[0] = '\'';
+
+        if ((res = cci_escape_string (imp_dbh->handle, 
+                        escaped_string + 1, unescaped_string, len, &error)) < 0)
+        {
+            free(escaped_string);
+            handle_error(dbh, res, &error);
+            return Nullsv;
+        }
+
+        escaped_string[1 + res] = '\'';
+
+        result = newSVpvn (escaped_string, res + 2);
+        free (escaped_string);
+    }
+
+    return result;
+}
+#endif
+
+
 /* Large object functions */
 
 /**************************************************************************/
@@ -985,6 +1118,7 @@ cubrid_st_lob_get( SV *sth, int col )
     T_CCI_U_TYPE u_type;
 
     D_imp_sth (sth);
+    imp_sth->lob = NULL;
 
     if (col < 1 || col > DBIc_NUM_FIELDS (imp_sth)) {
         handle_error (sth, CCI_ER_COLUMN_INDEX, NULL);
@@ -1070,7 +1204,7 @@ cubrid_st_lob_export( SV *sth, int index, char *filename )
 
     D_imp_sth (sth);
 
-    if (imp_sth->lob[index-1].lob == NULL) {
+    if ( imp_sth->lob == NULL || imp_sth->lob[index-1].lob == NULL) {
         handle_error (sth, CCI_ER_INVALID_LOB_HANDLE, NULL);
         return FALSE;
     }
