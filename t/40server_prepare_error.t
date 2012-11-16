@@ -21,7 +21,7 @@ if ($@) {
     plan skip_all => "ERROR: $@. Can't continue test";
 }
 
-plan tests => 3;
+plan tests => 4;
 
 # execute invalid SQL to make sure we get an error
 my $q = "select select select";	# invalid SQL
@@ -33,6 +33,6 @@ $dbh->{PrintError} = 1;
 $dbh->{PrintWarn} = 1;
 ok defined($DBI::errstr);
 cmp_ok $DBI::errstr, 'ne', '';
+cmp_ok $DBI::errstr,  'eq', 'CUBRID DBMS Error : (-493) Syntax: syntax error, unexpected SELECT ';
 
-print "errstr $DBI::errstr\n" if $DBI::errstr;
 ok $dbh->disconnect();

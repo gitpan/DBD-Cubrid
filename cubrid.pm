@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '9.0.0.0001';
+    $VERSION = '8.4.3.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -140,6 +140,15 @@ use strict;
                 $connect_dsn .= "?rctime=$connect_attr{RCTIME}";
                 $is_connect_attr = 1;
             }
+        }
+
+        if ($connect_attr{AUTOCOMMIT}) {
+           if ($is_connect_attr) {
+               $connect_dsn .= "&autocommit=$connect_attr{AUTOCOMMIT}";
+           } else {
+               $connect_dsn .= "?autocommit=$connect_attr{AUTOCOMMIT}";
+               $is_connect_attr = 1;
+           }
         }
 
         if ($connect_attr{LOGIN_TIMEOUT}) {
@@ -265,7 +274,7 @@ use strict;
                 $want_tables = $want_views = 1;
             }
 
-            my $sql = "SELECT class_name, class_type FROM db_class where class_name like " . $dbh->quote($table);
+            my $sql = "SELECT class_name, class_type FROM db_class where class_name like '$table'";
             my $sth = $dbh->prepare ($sql) or return undef;
             $sth->execute or return DBI::set_err($dbh, $sth->err(), $sth->errstr());
 
