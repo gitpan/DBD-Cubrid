@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '8.4.3.0001';
+    $VERSION = '9.1.0.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -140,15 +140,6 @@ use strict;
                 $connect_dsn .= "?rctime=$connect_attr{RCTIME}";
                 $is_connect_attr = 1;
             }
-        }
-
-        if ($connect_attr{AUTOCOMMIT}) {
-           if ($is_connect_attr) {
-               $connect_dsn .= "&autocommit=$connect_attr{AUTOCOMMIT}";
-           } else {
-               $connect_dsn .= "?autocommit=$connect_attr{AUTOCOMMIT}";
-               $is_connect_attr = 1;
-           }
         }
 
         if ($connect_attr{LOGIN_TIMEOUT}) {
@@ -274,7 +265,7 @@ use strict;
                 $want_tables = $want_views = 1;
             }
 
-            my $sql = "SELECT class_name, class_type FROM db_class where class_name like '$table'";
+            my $sql = "SELECT class_name, class_type FROM db_class where class_name like " . $dbh->quote($table);
             my $sth = $dbh->prepare ($sql) or return undef;
             $sth->execute or return DBI::set_err($dbh, $sth->err(), $sth->errstr());
 
@@ -326,6 +317,9 @@ use strict;
         for my $row (@$desc) {
 
             my $type = $row->{type};
+            if (!defined($type)) {
+                $type = "NULL";
+            }
 
             my $info = {
                 TABLE_CAT               => $catalog,
@@ -459,6 +453,9 @@ use strict;
                 else {
                     $info->{COLUMN_SIZE} = 1073741823;
                 }
+            }
+            elsif ($type =~ /^NULL$/) {
+                $info->{DATA_TYPE} = SQL_UNKNOWN_TYPE;
             }
             else {
                 $info->{DATA_TYPE} = SQL_VARCHAR;
@@ -652,6 +649,8 @@ use strict;
     1, 0, 2, 0, 0, 0, "BIGINT", -1, -1, SQL_INTEGER, -1, 10, -1],
 ["DATETIME", SQL_TYPE_TIMESTAMP, 23, q{DATETIME '}, q{'}, undef,
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
+["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
 ["BLOB", SQL_BLOB, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
 ["CLOB", SQL_CLOB, 0, undef, undef, undef,
@@ -1149,6 +1148,7 @@ CLOB. The following are data types supported by CUBRID.
     | TIMESTAMP     | SQL_TYPE_TIMESTAMP    |
     | BIGINT        | SQL_BIGINT            |
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
+    | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
     | BLOB          | SQL_BLOB              |
     | CLOB          | SQL_CLOB              |
