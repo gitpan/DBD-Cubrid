@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '9.1.0.0001';
+    $VERSION = '9.2.0.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -1173,6 +1173,57 @@ Examples of use:
     $sth->bind_param (2, "HELLO WORLD", DBI::SQL_CLOB);
     $sth->execute;
 
+=head3 B<bind_param_array>
+
+Binds an array of values to a placeholder.
+
+    $sth->bind_param_array ($index, $array_ref_or_value);
+    $sth->bind_param_array ($index, $array_ref_or_value, $bind_type);
+    $sth->bind_param_array ($index, $array_ref_or_value, \%attr);
+    $sth->execute_array( \%attrs, @array_of_arrays);
+    
+Examples of use:
+    
+    #!perl -w
+    use DBI;
+    use Test::More;
+    use strict;
+ 
+    my $dsn="dbi:cubrid:database=demodb;host=localhost;port=33000";
+    my $dbh=DBI->connect($dsn, "dba", "");
+ 
+    $dbh->do("DROP TABLE IF EXISTS test_cubrid");
+    $dbh->do("CREATE TABLE test_cubrid (id VARCHAR)");
+ 
+    my $sth = $dbh->prepare ("INSERT INTO test_cubrid VALUES (?)");
+    ok $sth->bind_param_array (1, ['aaa', 'bbb']);
+    ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } );
+    
+=head3 B<execute_array>  
+  
+Execute a prepared statement once for each item in a passed-in hashref, or items that were 
+previously bound via the "bind_param_array" method. See the DBI documentation for more details.
+
+    $sth->execute_array()
+    $sth->execute_array(\%attr)
+    $sth->execute_array(\%attr, @bind_values)
+   
+Examples of use:
+    
+    use strict;
+    use DBI qw(:sql_types);
+    use Data::Dumper;
+     
+    my $dsn="dbi:cubrid:database=demodb;host=localhost;port=33000";
+    my $dbh=DBI->connect($dsn, "dba", "");
+		 
+    $dbh->do("DROP TABLE IF EXISTS test_cubrid");
+    $dbh->do("CREATE TABLE test_cubrid (id INT)");
+    
+    my $sth = $dbh->prepare ("INSERT INTO test_cubrid VALUES (?)");
+    my @tuple_status;
+    ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } , [2,3,4,9]);
+        
 =head3 B<execute>
 
     $rv = $sth->execute;
