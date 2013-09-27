@@ -28,41 +28,60 @@
  *
  */
 
-/* ====== Include CUBRID Header Files ====== */
+/*
+ * cas_error.h -
+ */
 
-#include "cas_cci.h"
+#ifndef	_CAS_ERROR_H_
+#define	_CAS_ERROR_H_
 
-/* ------ end of CUBRID include files ------ */
+#ident "$Id$"
 
-//#define NEED_DBIXS_VERSION 93
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
-//#define PERL_NO_GET_CONTEXT
 
-#include <DBIXS.h>		/* installed by the DBI module	*/
+  typedef enum
+  {
+    CAS_ER_DBMS = -10000,
+    CAS_ER_INTERNAL = -10001,
+    CAS_ER_NO_MORE_MEMORY = -10002,
+    CAS_ER_COMMUNICATION = -10003,
+    CAS_ER_ARGS = -10004,
+    CAS_ER_TRAN_TYPE = -10005,
+    CAS_ER_SRV_HANDLE = -10006,
+    CAS_ER_NUM_BIND = -10007,
+    CAS_ER_UNKNOWN_U_TYPE = -10008,
+    CAS_ER_DB_VALUE = -10009,
+    CAS_ER_TYPE_CONVERSION = -10010,
+    CAS_ER_PARAM_NAME = -10011,
+    CAS_ER_NO_MORE_DATA = -10012,
+    CAS_ER_OBJECT = -10013,
+    CAS_ER_OPEN_FILE = -10014,
+    CAS_ER_SCHEMA_TYPE = -10015,
+    CAS_ER_VERSION = -10016,
+    CAS_ER_FREE_SERVER = -10017,
+    CAS_ER_NOT_AUTHORIZED_CLIENT = -10018,
+    CAS_ER_QUERY_CANCEL = -10019,
+    CAS_ER_NOT_COLLECTION = -10020,
+    CAS_ER_COLLECTION_DOMAIN = -10021,
+    CAS_ER_NO_MORE_RESULT_SET = -10022,
+    CAS_ER_INVALID_CALL_STMT = -10023,
+    CAS_ER_STMT_POOLING = -10024,
+    CAS_ER_DBSERVER_DISCONNECTED = -10025,
+    CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED = -10026,
+    CAS_ER_HOLDABLE_NOT_ALLOWED = -10027,
+    CAS_ER_NOT_IMPLEMENTED = -10100,
+    CAS_ER_MAX_CLIENT_EXCEEDED = -10101,
+    CAS_ER_INVALID_CURSOR_POS = -10102,
+    CAS_ER_IS = -10200,
+  } T_CAS_ERROR_CODE;
 
-#include "dbdimp.h"
 
-#include <dbd_xsh.h>		/* installed by the DBI module	*/
+#ifdef __cplusplus
+}
+#endif
 
-DBISTATE_DECLARE;
-
-/* These prototypes are for dbdimp.c funcs used in the XS file          */
-/* These names are #defined to driver specific names in dbdimp.h        */
-
-#define CAS_ER_PARAM_NAME                   -10011
-
-/* CUBRID types */
-
-#define CUBRID_ER_START                     -30000
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -30001
-#define CUBRID_ER_CANNOT_FETCH_DATA         -30002
-#define CUBRID_ER_WRITE_FILE                -30003
-#define CUBRID_ER_READ_FILE                 -30004
-#define CUBRID_ER_NOT_LOB_TYPE              -30005
-#define CUBRID_ER_INVALID_PARAM             -30006
-#define CUBRID_ER_ROW_INDEX_EXCEEDED        -30007
-#define CUBRID_ER_EXPORT_NULL_LOB_INVALID   -30008 
-#define CUBRID_ER_END                       -31000
-
-/* end of cubrid.h */
-
+#endif				/* _CAS_ERROR_H_ */

@@ -1199,6 +1199,15 @@ Examples of use:
     ok $sth->bind_param_array (1, ['aaa', 'bbb']);
     ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } );
     
+=head3 B<execute>
+
+    $rv = $sth->execute;
+    $rv = $sth->execute (@bind_values);
+
+Executes a previously prepared statement. In addition to UPDATE, DELETE, INSERT 
+statements, for which it returns always the number of affected rows and to SELECT
+statements, it returns the number of rows thart will be returned by the query.
+
 =head3 B<execute_array>  
   
 Execute a prepared statement once for each item in a passed-in hashref, or items that were 
@@ -1224,15 +1233,6 @@ Examples of use:
     my @tuple_status;
     ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } , [2,3,4,9]);
         
-=head3 B<execute>
-
-    $rv = $sth->execute;
-    $rv = $sth->execute (@bind_values);
-
-Executes a previously prepared statement. In addition to UPDATE, DELETE, INSERT 
-statements, for which it returns always the number of affected rows and to SELECT
-statements, it returns the number of rows thart will be returned by the query.
-
 =head3 B<fetchrow_arrayref>
 
     $ary_ref = $sth->fetchrow_arrayref;

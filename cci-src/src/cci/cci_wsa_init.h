@@ -28,41 +28,40 @@
  *
  */
 
-/* ====== Include CUBRID Header Files ====== */
 
-#include "cas_cci.h"
+/*
+ * cci_wsa_init.h -
+ */
 
-/* ------ end of CUBRID include files ------ */
+#ifndef _CCI_WSA_INIT_H_
+#define _CCI_WSA_INIT_H_
 
-//#define NEED_DBIXS_VERSION 93
+#ident "$Id$"
 
-//#define PERL_NO_GET_CONTEXT
+/************************************************************************
+ * IMPORTED SYSTEM HEADER FILES						*
+ ************************************************************************/
 
-#include <DBIXS.h>		/* installed by the DBI module	*/
+/************************************************************************
+ * IMPORTED OTHER HEADER FILES						*
+ ************************************************************************/
 
-#include "dbdimp.h"
+/************************************************************************
+ * EXPORTED DEFINITIONS							*
+ ************************************************************************/
 
-#include <dbd_xsh.h>		/* installed by the DBI module	*/
+/************************************************************************
+ * EXPORTED TYPE DEFINITIONS						*
+ ************************************************************************/
 
-DBISTATE_DECLARE;
+/************************************************************************
+ * EXPORTED FUNCTION PROTOTYPES						*
+ ************************************************************************/
 
-/* These prototypes are for dbdimp.c funcs used in the XS file          */
-/* These names are #defined to driver specific names in dbdimp.h        */
+int wsa_initialize ();
 
-#define CAS_ER_PARAM_NAME                   -10011
+/************************************************************************
+ * EXPORTED VARIABLES							*
+ ************************************************************************/
 
-/* CUBRID types */
-
-#define CUBRID_ER_START                     -30000
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -30001
-#define CUBRID_ER_CANNOT_FETCH_DATA         -30002
-#define CUBRID_ER_WRITE_FILE                -30003
-#define CUBRID_ER_READ_FILE                 -30004
-#define CUBRID_ER_NOT_LOB_TYPE              -30005
-#define CUBRID_ER_INVALID_PARAM             -30006
-#define CUBRID_ER_ROW_INDEX_EXCEEDED        -30007
-#define CUBRID_ER_EXPORT_NULL_LOB_INVALID   -30008 
-#define CUBRID_ER_END                       -31000
-
-/* end of cubrid.h */
-
+#endif /* _CCI_WSA_INIT_H_ */

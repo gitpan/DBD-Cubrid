@@ -28,41 +28,58 @@
  *
  */
 
-/* ====== Include CUBRID Header Files ====== */
 
-#include "cas_cci.h"
+/*
+ * cci_wsa_init.c -
+ */
 
-/* ------ end of CUBRID include files ------ */
+#ident "$Id$"
 
-//#define NEED_DBIXS_VERSION 93
+#include <winsock2.h>
+#include <windows.h>
+#include <winsock.h>
 
-//#define PERL_NO_GET_CONTEXT
+int
+wsa_initialize ()
+{
+  WORD wVersionRequested;
+  WSADATA wsaData;
+  int err;
 
-#include <DBIXS.h>		/* installed by the DBI module	*/
+  wVersionRequested = MAKEWORD (1, 1);
 
-#include "dbdimp.h"
+  err = WSAStartup (wVersionRequested, &wsaData);
 
-#include <dbd_xsh.h>		/* installed by the DBI module	*/
+  if (err != 0)
+    return -1;
 
-DBISTATE_DECLARE;
+  /* Confirm that the Windows Sockets DLL supports 1.1. */
+  /* Note that if the DLL supports versions greater */
+  /* than 1.1 in addition to 1.1, it will still return */
+  /* 1.1 in wVersion since that is the version we */
+  /* requested. */
+  if (LOBYTE (wsaData.wVersion) != 1 || HIBYTE (wsaData.wVersion) != 1)
+    {
+      WSACleanup ();
+      return -1;
+    }
+  /* The Windows Sockets DLL is acceptable. Proceed. */
 
-/* These prototypes are for dbdimp.c funcs used in the XS file          */
-/* These names are #defined to driver specific names in dbdimp.h        */
 
-#define CAS_ER_PARAM_NAME                   -10011
+  /* Make sure that the version requested is >= 1.1. */
+  /* The low byte is the major version and the high */
+  /* byte is the minor version.   */
+  if (LOBYTE (wVersionRequested) < 1
+      || (LOBYTE (wVersionRequested) == 1 && HIBYTE (wVersionRequested) < 1))
+    {
+      return -1;
+    }
+  /* Since we only support 1.1, set both wVersion and */
+  /* wHighVersion to 1.1. */
+  /*
+     lpWsaData->wVersion = MAKEWORD( 1, 1 );
+     lpWsaData->wHighVersion = MAKEWORD( 1, 1 );
+   */
 
-/* CUBRID types */
-
-#define CUBRID_ER_START                     -30000
-#define CUBRID_ER_CANNOT_GET_COLUMN_INFO    -30001
-#define CUBRID_ER_CANNOT_FETCH_DATA         -30002
-#define CUBRID_ER_WRITE_FILE                -30003
-#define CUBRID_ER_READ_FILE                 -30004
-#define CUBRID_ER_NOT_LOB_TYPE              -30005
-#define CUBRID_ER_INVALID_PARAM             -30006
-#define CUBRID_ER_ROW_INDEX_EXCEEDED        -30007
-#define CUBRID_ER_EXPORT_NULL_LOB_INVALID   -30008 
-#define CUBRID_ER_END                       -31000
-
-/* end of cubrid.h */
-
+  return 0;
+}
