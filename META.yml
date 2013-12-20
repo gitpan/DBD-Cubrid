@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               DBD-cubrid
-version:            9.1.0.0002
+version:            8.4.4.0001
 abstract:           CUBRID database driver for the DBI module
 author:
     - Zhang Hui
