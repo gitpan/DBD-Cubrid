@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '8.4.4.0001';
+    $VERSION = '9.2.0.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -140,15 +140,6 @@ use strict;
                 $connect_dsn .= "?rctime=$connect_attr{RCTIME}";
                 $is_connect_attr = 1;
             }
-        }
-
-        if ($connect_attr{AUTOCOMMIT}) {
-           if ($is_connect_attr) {
-               $connect_dsn .= "&autocommit=$connect_attr{AUTOCOMMIT}";
-           } else {
-               $connect_dsn .= "?autocommit=$connect_attr{AUTOCOMMIT}";
-               $is_connect_attr = 1;
-           }
         }
 
         if ($connect_attr{LOGIN_TIMEOUT}) {
@@ -274,7 +265,7 @@ use strict;
                 $want_tables = $want_views = 1;
             }
 
-            my $sql = "SELECT class_name, class_type FROM db_class where class_name like '$table'";
+            my $sql = "SELECT class_name, class_type FROM db_class where class_name like " . $dbh->quote($table);
             my $sth = $dbh->prepare ($sql) or return undef;
             $sth->execute or return DBI::set_err($dbh, $sth->err(), $sth->errstr());
 
@@ -658,6 +649,8 @@ use strict;
     1, 0, 2, 0, 0, 0, "BIGINT", -1, -1, SQL_INTEGER, -1, 10, -1],
 ["DATETIME", SQL_TYPE_TIMESTAMP, 23, q{DATETIME '}, q{'}, undef,
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
+["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
 ["BLOB", SQL_BLOB, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
 ["CLOB", SQL_CLOB, 0, undef, undef, undef,
@@ -1155,6 +1148,7 @@ CLOB. The following are data types supported by CUBRID.
     | TIMESTAMP     | SQL_TYPE_TIMESTAMP    |
     | BIGINT        | SQL_BIGINT            |
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
+    | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
     | BLOB          | SQL_BLOB              |
     | CLOB          | SQL_CLOB              |
@@ -1179,6 +1173,32 @@ Examples of use:
     $sth->bind_param (2, "HELLO WORLD", DBI::SQL_CLOB);
     $sth->execute;
 
+=head3 B<bind_param_array>
+
+Binds an array of values to a placeholder.
+
+    $sth->bind_param_array ($index, $array_ref_or_value);
+    $sth->bind_param_array ($index, $array_ref_or_value, $bind_type);
+    $sth->bind_param_array ($index, $array_ref_or_value, \%attr);
+    $sth->execute_array( \%attrs, @array_of_arrays);
+    
+Examples of use:
+    
+    #!perl -w
+    use DBI;
+    use Test::More;
+    use strict;
+ 
+    my $dsn="dbi:cubrid:database=demodb;host=localhost;port=33000";
+    my $dbh=DBI->connect($dsn, "dba", "");
+ 
+    $dbh->do("DROP TABLE IF EXISTS test_cubrid");
+    $dbh->do("CREATE TABLE test_cubrid (id VARCHAR)");
+ 
+    my $sth = $dbh->prepare ("INSERT INTO test_cubrid VALUES (?)");
+    ok $sth->bind_param_array (1, ['aaa', 'bbb']);
+    ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } );
+    
 =head3 B<execute>
 
     $rv = $sth->execute;
@@ -1188,6 +1208,31 @@ Executes a previously prepared statement. In addition to UPDATE, DELETE, INSERT
 statements, for which it returns always the number of affected rows and to SELECT
 statements, it returns the number of rows thart will be returned by the query.
 
+=head3 B<execute_array>  
+  
+Execute a prepared statement once for each item in a passed-in hashref, or items that were 
+previously bound via the "bind_param_array" method. See the DBI documentation for more details.
+
+    $sth->execute_array()
+    $sth->execute_array(\%attr)
+    $sth->execute_array(\%attr, @bind_values)
+   
+Examples of use:
+    
+    use strict;
+    use DBI qw(:sql_types);
+    use Data::Dumper;
+     
+    my $dsn="dbi:cubrid:database=demodb;host=localhost;port=33000";
+    my $dbh=DBI->connect($dsn, "dba", "");
+		 
+    $dbh->do("DROP TABLE IF EXISTS test_cubrid");
+    $dbh->do("CREATE TABLE test_cubrid (id INT)");
+    
+    my $sth = $dbh->prepare ("INSERT INTO test_cubrid VALUES (?)");
+    my @tuple_status;
+    ok $sth->execute_array( { ArrayTupleStatus => \my @tuple_status } , [2,3,4,9]);
+        
 =head3 B<fetchrow_arrayref>
 
     $ary_ref = $sth->fetchrow_arrayref;
