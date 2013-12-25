@@ -69,8 +69,6 @@ extern "C"
 #define gettid()                GetCurrentThreadId()
 #elif defined(AIX)
 #define gettid()                pthread_self()
-#elif defined(MAC_OS)
-#define gettid()                getpid()
 #else
 #define gettid()                syscall(__NR_gettid)
 #endif
@@ -327,7 +325,6 @@ extern "C"
  * PUBLIC FUNCTION PROTOTYPES						*
  ************************************************************************/
   extern int get_elapsed_time (struct timeval *start_time);
-
   extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
   extern int mht_strcasecmpeq (void *key1, void *key2);
 
@@ -339,8 +336,6 @@ extern "C"
   extern void *mht_get (MHT_TABLE * ht, void *key);
   extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
   extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
-
-  extern int hostname2uchar (char *host, unsigned char *ip_addr);
 
 /************************************************************************
  * PUBLIC VARIABLES							*

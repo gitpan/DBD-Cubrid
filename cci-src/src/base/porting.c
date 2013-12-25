@@ -30,7 +30,6 @@
 #include <errno.h>
 #include <signal.h>
 #include <ctype.h>
-#include <time.h>
 
 #if defined(WINDOWS)
 #include <tchar.h>
@@ -38,15 +37,13 @@
 #include <io.h>
 #include <conio.h>
 #include <math.h>
-#else
-#if defined(AIX)
+#elif defined(AIX)
 #define _BOOL
 #include <unistd.h>
 #include <curses.h>
 #else
 #include <unistd.h>
 #include <curses.h>
-#endif
 #endif
 
 #include "porting.h"
@@ -90,8 +87,7 @@ poll (struct pollfd *fds, nfds_t nfds, int timeout)
   fd_set rset, wset, eset;
   fd_set *rp, *wp, *ep;
   unsigned long int i;
-  int r;
-  unsigned int max_fd;
+  int r, max_fd;
 
   tp = NULL;
   if (timeout >= 0)
@@ -1013,23 +1009,6 @@ cub_dirname_r (const char *path, char *pathbuf, size_t buflen)
   return (int) len;
 }
 
-#if defined(AIX)
-#undef ceil
-double
-aix_ceil (double x)
-{
-  double result = ceil (x);
-  /* e.g ceil(-0.5) should be -0, in AIX, it is 0 */
-  if ((x < 0) && (result == 0))
-    {
-      result = -result;
-    }
-  return result;
-}
-
-#define ceil(x) aix_ceil(x)
-#endif
-
 #if !defined(HAVE_DIRNAME)
 char *
 dirname (const char *path)
@@ -1112,39 +1091,6 @@ basename (const char *path)
   return (basename_r (path, bname, PATH_MAX) < 0) ? NULL : bname;
 }
 #endif /* !HAVE_BASENAME */
-
-#if defined(WINDOWS)
-char *
-ctime_r (const time_t * time, char *time_buf)
-{
-  int err;
-  assert (time != NULL && time_buf != NULL);
-
-  err = ctime_s (time_buf, CTIME_MAX, time);
-  if (err != 0)
-    {
-      return NULL;
-    }
-  return time_buf;
-}
-#endif /* !WINDOWS */
-
-#if defined(WINDOWS)
-struct tm *
-localtime_r (const time_t * time, struct tm *tm_val)
-{
-  int err;
-  assert (time != NULL && tm_val != NULL);
-
-  err = localtime_s (tm_val, time);
-  if (err != 0)
-    {
-      return NULL;
-    }
-  return tm_val;
-}
-#endif /* WIDNOWS */
-
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
@@ -1727,6 +1673,8 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
   result = WaitForMultipleObjects (2, cond->events, FALSE, msec);
   assert (result == WAIT_TIMEOUT || result <= 2);
 
+  /*** THREAD UNSAFE AREA ***/
+
   EnterCriticalSection (&cond->lock_waiting);
   cond->waiting--;
 
@@ -1734,6 +1682,12 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex,
     {
       ResetEvent (cond->events[COND_BROADCAST]);
       SetEvent (cond->broadcast_block_event);
+
+      /* 
+       * Remove additional signal if exists
+       * (That's received in above THREAD UNSAFE AREA)
+       */
+      WaitForSingleObject (cond->events[COND_SIGNAL], 0);
     }
 
   LeaveCriticalSection (&cond->lock_waiting);
@@ -1955,216 +1909,11 @@ win32_exchange64 (UINT64 volatile *ptr, UINT64 new_val)
   return old;
 }
 #endif /* _WIN64 */
-
 #endif /* WINDOWS */
 
-#if defined(WINDOWS)
-/*
- * strtod_win () convert string to double
- * return : the converted double
- * str (in): string to convert
- * end_ptr (in): see strtod
- */
-double
-strtod_win (const char *str, char **end_ptr)
-{
-  bool is_hex = false;
-  double result = 0.0, int_d = 0.0, float_d = 0.0;
-  double tmp_d = 0.0;
-  const char *p = NULL, *dot_p = NULL, *end_p = NULL;
-  int sign_flag = 1;
-
-  if (str == NULL || *str == '\0')
-    {
-      if (end_ptr != NULL)
-	{
-	  *end_ptr = (char *) str;
-	}
-      return result;
-    }
-
-  /* if the string start with "0x", "0X", "+0x", "+0X", "-0x" or "-0X" 
-   * then deal with it as hex string
-   */
-  p = str;
-  if (*p == '+')
-    {
-      p++;
-    }
-  else if (*p == '-')
-    {
-      sign_flag = -1;
-      p++;
-    }
-
-  if (*p == '0' && (*(p + 1) == 'x' || *(p + 1) == 'X'))
-    {
-      is_hex = true;
-      p += 2;
-    }
-
-  if (is_hex)
-    {
-      /* convert integer part */
-      while (*p != '\0')
-	{
-	  if (*p == '.')
-	    {
-	      break;
-	    }
-
-	  if ('0' <= *p && *p <= '9')
-	    {
-	      tmp_d = (double) (*p - '0');
-	    }
-	  else if ('A' <= *p && *p <= 'F')
-	    {
-	      tmp_d = (double) (*p - 'A' + 10);
-	    }
-	  else if ('a' <= *p && *p <= 'f')
-	    {
-	      tmp_d = (double) (*p - 'a' + 10);
-	    }
-	  else
-	    {
-	      end_p = p;
-	      goto end;
-	    }
-
-	  int_d = int_d * 16.0 + tmp_d;
-
-	  p++;
-	}
-      end_p = p;
-
-      /* convert float part */
-      if (*p == '.')
-	{
-	  /* find the end */
-	  dot_p = p;
-	  while (*++p != '\0')
-	    ;
-	  end_p = p;
-	  p--;
-
-	  while (p != dot_p)
-	    {
-	      if ('0' <= *p && *p <= '9')
-		{
-		  tmp_d = (double) (*p - '0');
-		}
-	      else if ('A' <= *p && *p <= 'F')
-		{
-		  tmp_d = (double) (*p - 'A' + 10);
-		}
-	      else if ('a' <= *p && *p <= 'f')
-		{
-		  tmp_d = (double) (*p - 'a' + 10);
-		}
-	      else
-		{
-		  end_p = p;
-		  goto end;
-		}
-
-	      float_d = (float_d + tmp_d) / 16.0;
-
-	      p--;
-	    }
-	}
-
-      result = int_d + float_d;
-      if (sign_flag == -1)
-	{
-	  result = -result;
-	}
-
-      /* underflow and overflow */
-      if (result > DBL_MAX || (-result) > DBL_MAX)
-	{
-	  errno = ERANGE;
-	}
-    }
-  else
-    {
-      result = strtod (str, end_ptr);
-    }
-
-end:
-
-  if (is_hex && end_ptr != NULL)
-    {
-      *end_ptr = (char *) end_p;
-    }
-
-  return result;
-}
-#endif
 
 /*
- * timeval_diff_in_msec -
- *
- *   return: msec
- *
- */
-INT64
-timeval_diff_in_msec (const struct timeval * end_time,
-		      const struct timeval * start_time)
-{
-  INT64 msec;
-
-  msec = (end_time->tv_sec - start_time->tv_sec) * 1000LL;
-  msec += (end_time->tv_usec - start_time->tv_usec) / 1000LL;
-
-  return msec;
-}
-
-/*
- * timeval_add_msec -
- *   return: 0
- *
- *   addted_time(out):
- *   start_time(in):
- *   msec(in):
- */
-int
-timeval_add_msec (struct timeval *added_time,
-		  const struct timeval *start_time, int msec)
-{
-  added_time->tv_sec = start_time->tv_sec + msec / 1000LL;
-
-  if (start_time->tv_usec + ((msec % 1000LL) * 1000LL) >= 1000000LL)
-    {
-      added_time->tv_sec += 1;
-    }
-  added_time->tv_usec = (start_time->tv_usec +
-			 ((msec % 1000LL) * 1000LL) % 10000000LL);
-
-  return 0;
-}
-
-/*
- * timeval_to_timespec -
- *   return: 0
- *
- *   to(out):
- *   from(in):
- */
-int
-timeval_to_timespec (struct timespec *to, const struct timeval *from)
-{
-  assert (to != NULL);
-  assert (from != NULL);
-
-  to->tv_sec = from->tv_sec;
-  to->tv_nsec = from->tv_usec * 1000LL;
-
-  return 0;
-}
-
-
-/*
- * port_open_memstream - make memory stream file handle if possible. 
+ * port_open_memstream - make memory stream file handle if possible.
  *			 if not, make temporiry file handle.
  *   return: file handle
  *

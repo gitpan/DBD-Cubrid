@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '9.2.0.0001';
+    $VERSION = '8.4.4.0002';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -649,8 +649,6 @@ use strict;
     1, 0, 2, 0, 0, 0, "BIGINT", -1, -1, SQL_INTEGER, -1, 10, -1],
 ["DATETIME", SQL_TYPE_TIMESTAMP, 23, q{DATETIME '}, q{'}, undef,
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
-["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
-    1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
 ["BLOB", SQL_BLOB, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
 ["CLOB", SQL_CLOB, 0, undef, undef, undef,
@@ -1129,7 +1127,8 @@ Allows the user to bind a value and/or a data type to a placeholder. The value o
 is a number of using the '?' style placeholder. Generally, you can bind params without specifying
 the data type. CUBRID will match it automatically. That means, you don't use C<$bind_type> for
 most data types in CUBRID. But it won't work well with some special data types, such as BLOB and
-CLOB. The following are data types supported by CUBRID.
+CLOB. The following are data types supported by CUBRID.In CUBRID shard envrioment, the $bind_type 
+must be included in the bind_param function.
 
     -----------------------------------------
     | CUBRID        | sql_types             |
@@ -1148,7 +1147,6 @@ CLOB. The following are data types supported by CUBRID.
     | TIMESTAMP     | SQL_TYPE_TIMESTAMP    |
     | BIGINT        | SQL_BIGINT            |
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
-    | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
     | BLOB          | SQL_BLOB              |
     | CLOB          | SQL_CLOB              |

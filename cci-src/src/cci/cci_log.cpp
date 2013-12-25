@@ -690,7 +690,7 @@ void _Logger::logPrefix(CCI_LOG_LEVEL level)
 
   t = context.now.tv_sec;
 
-  localtime_r((const time_t *) &t, &cal);
+  localtime_r(&t, &cal);
   cal.tm_year += 1900;
   cal.tm_mon += 1;
 

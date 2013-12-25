@@ -60,7 +60,7 @@ struct option
 extern "C"
 {
 #endif
-#if !defined(MAC_OS)
+
   int getopt (int, char *const *, const char *);
   int getopt_long (int, char *const *, const char *,
 		   const struct option *, int *);
@@ -77,7 +77,7 @@ extern "C"
   extern int optind;
   extern int optopt;
 #endif
-#endif
+
 #ifdef __cplusplus
 };
 #endif

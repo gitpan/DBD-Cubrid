@@ -1,22 +1,25 @@
 --- #YAML:1.0
 name:               DBD-cubrid
-version:            9.2.0.0001
+version:            8.4.4.0002
 abstract:           CUBRID database driver for the DBI module
 author:
-    - Zhang Hui
-license:            unknown
+    - Zhang Hui (zhanghui@nhn.com)
+license:            perl
 distribution_type:  module
 configure_requires:
+    DBI:                  1.61
     ExtUtils::MakeMaker:  0
 build_requires:
+    DBI:                  1.61
     ExtUtils::MakeMaker:  0
+    Test::More:           0
 requires:
     DBI:  1.61
 no_index:
     directory:
         - t
         - inc
-generated_by:       ExtUtils::MakeMaker version 6.55_02
+generated_by:       ExtUtils::MakeMaker version 6.56
 meta-spec:
     url:      http://module-build.sourceforge.net/META-spec-v1.4.html
     version:  1.4

@@ -49,7 +49,7 @@
 #include <windows.h>
 #endif
 #include <sys/types.h>
-#include <regex38a.h>
+#include "regex38a.h"
 
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*

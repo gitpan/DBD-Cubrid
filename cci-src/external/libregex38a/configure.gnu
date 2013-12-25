@@ -1,6 +1,6 @@
 #!/bin/sh
 
-opts="--prefix=$PWD/.. --disable-shared --with-pic"
+opts="--prefix=$PWD/.. --disable-shared"
 srdrir=''
 
 while test $# -ge 1; do
@@ -16,6 +16,10 @@ while test $# -ge 1; do
       opts="$opts '$1'"
       srcdiropt=`echo $1 | sed 's/--srcdir=//'`
       srcdir=`readlink -f $srcdiropt`
+      shift
+      ;;
+    --enable-64bit)
+      opts="$opts --with-pic"
       shift
       ;;
     *)

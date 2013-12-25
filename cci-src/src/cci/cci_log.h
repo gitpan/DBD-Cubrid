@@ -135,4 +135,4 @@ extern "C"
 }
 #endif
 
-#endif                          /* CCI_LOG_H_ */
+#endif				/* CCI_LOG_H_ */

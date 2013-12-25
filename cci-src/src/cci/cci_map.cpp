@@ -139,7 +139,7 @@ T_CCI_ERROR_CODE map_get_otc_value (T_CCI_CONN mapped_conn_id,
 	    {
 	      if (connection->used)
 		{
-		  error = CCI_ER_USED_CONNECTION;
+		  error = CCI_ER_CON_HANDLE;
 		}
 	      else
 		{
@@ -252,7 +252,7 @@ T_CCI_ERROR_CODE map_get_ots_value (T_CCI_REQ mapped_stmt_id,
 	    {
 	      if (connection->used)
 		{
-		  error = CCI_ER_USED_CONNECTION;
+		  error = CCI_ER_REQ_HANDLE;
 		}
 	      else
 		{

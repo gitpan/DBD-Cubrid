@@ -69,7 +69,6 @@
 #if defined(WINDOWS)
 #include "version.h"
 #endif
-#include "porting.h"
 #include "cci_common.h"
 #include "cas_cci.h"
 #include "cci_handle_mng.h"
@@ -85,6 +84,7 @@
 
 #if defined(WINDOWS)
 int wsa_initialize ();
+#define getpid _getpid
 #endif
 
 #ifdef CCI_XA
@@ -458,6 +458,7 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   char *end = NULL;
   char *host, *dbname;
   int port;
+  bool use_url = false;
   T_CON_HANDLE *con_handle = NULL;
 
   reset_error_buffer (err_buf);
@@ -493,6 +494,17 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
       pass = (char *) "";
     }
 
+  if (user[0] == '\0')
+    {
+      if (pass[0] != '\0')
+	{
+	  /* error - cci_connect_with_url (url, "", "pass") */
+	  set_error_buffer (err_buf, CCI_ER_CONNECT, NULL);
+	  return CCI_ER_CONNECT;
+	}
+      use_url = true;
+    }
+
   error = cci_url_match (url, token);
   if (error != CCI_ER_NO_ERROR)
     {
@@ -503,16 +515,11 @@ cci_connect_with_url_internal (char *url, char *user, char *pass,
   host = token[0];
   port = (int) strtol (token[1], &end, 10);
   dbname = token[2];
-
-  if (*user == '\0')
+  if (use_url)
     {
       user = token[3];
-    }
-  if (*pass == '\0')
-    {
       pass = token[4];
     }
-
   property = token[5];
   if (property == NULL)
     {
@@ -710,6 +717,7 @@ cci_disconnect (int mapped_conn_id, T_CCI_ERROR * err_buf)
 			  "[%04d][API][E][cci_datasource_release]",
 			  con_handle->id);
 	}
+      cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK);
       if (cci_end_tran_internal (con_handle, CCI_TRAN_ROLLBACK) != NO_ERROR)
         {
           qe_con_close (con_handle);
@@ -774,23 +782,6 @@ cci_end_tran_internal (T_CON_HANDLE * con_handle, char type)
   if (con_handle->con_status != CCI_CON_STATUS_OUT_TRAN)
     {
       error = qe_end_tran (con_handle, type, &(con_handle->err_buf));
-    }
-  else if (type == CCI_TRAN_ROLLBACK)
-    {
-      /* even if con status is CCI_CON_STATUS_OUT_TRAN, there may be holdable
-       * req_handles that remained open after commit
-       * if a rollback is done after commit, these req_handles should be
-       * closed or freed
-       */
-      if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] !=
-	  CAS_STATEMENT_POOLING_ON)
-	{
-	  hm_req_handle_free_all (con_handle);
-	}
-      else
-	{
-	  hm_req_handle_close_all_resultsets (con_handle);
-	}
     }
   API_ELOG (con_handle, error);
 
@@ -875,6 +866,7 @@ cci_prepare (int mapped_conn_id, char *sql_stmt, char flag,
   int statement_id = -1;
   int error = CCI_ER_NO_ERROR;
   int con_err_code = 0;
+  int connect_done;
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
   int is_first_prepare_in_tran;
@@ -1045,6 +1037,7 @@ cci_is_updatable (int mapped_stmt_id)
 {
   T_CON_HANDLE *con_handle = NULL;
   T_REQ_HANDLE *req_handle = NULL;
+  int updatable_flag;
   int error;
 
 #ifdef CCI_DEBUG
@@ -1062,30 +1055,6 @@ cci_is_updatable (int mapped_stmt_id)
   con_handle->used = false;
 
   return (int) req_handle->updatable_flag;
-}
-
-int
-cci_is_holdable (int mapped_stmt_id)
-{
-  T_CON_HANDLE *con_handle = NULL;
-  T_REQ_HANDLE *req_handle = NULL;
-  int error;
-
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg
-		   ("(%d:%d)cci_is_holdable", CON_ID (mapped_stmt_id),
-		    REQ_ID (mapped_stmt_id)));
-#endif
-
-  error = hm_get_statement (mapped_stmt_id, &con_handle, &req_handle);
-  if (error != CCI_ER_NO_ERROR)
-    {
-      return error;
-    }
-
-  con_handle->used = false;
-
-  return hm_get_req_handle_holdable (con_handle, req_handle);
 }
 
 T_CCI_COL_INFO *
@@ -1397,7 +1366,6 @@ cci_execute (int mapped_stmt_id, char flag, int max_col_size,
 	    {
 	      goto execute_end;
 	    }
-
 	  error = qe_execute (req_handle, con_handle, flag, max_col_size,
 			      &(con_handle->err_buf));
 	}
@@ -1768,7 +1736,6 @@ cci_execute_array (int mapped_stmt_id, T_CCI_QUERY_RESULT ** qr,
 	    {
 	      goto execute_end;
 	    }
-
 	  error = qe_execute_array (req_handle, con_handle, qr,
 				    &(con_handle->err_buf));
 	}
@@ -2077,17 +2044,7 @@ cci_close_query_result (int mapped_stmt_id, T_CCI_ERROR * err_buf)
     }
   reset_error_buffer (&(con_handle->err_buf));
 
-  error = qe_close_query_result (req_handle, con_handle);
-  if (error == CCI_ER_COMMUNICATION
-      && con_handle->con_status == CCI_CON_STATUS_OUT_TRAN)
-    {
-      error = CCI_ER_NO_ERROR;
-    }
-
-  if (error == CCI_ER_NO_ERROR)
-    {
-      error = req_close_query_result (req_handle);
-    }
+  error = req_close_query_result (req_handle);
 
   set_error_buffer (&(con_handle->err_buf), error, NULL);
   get_last_error (con_handle, err_buf);
@@ -2120,8 +2077,6 @@ cci_close_req_handle (int mapped_stmt_id)
 
   if (DOES_CONNECTION_HAVE_STMT_POOL (con_handle))
     {
-      qe_close_query_result (req_handle, con_handle);
-
       /* free req_handle resources */
       req_handle_content_free_for_pool (req_handle);
 
@@ -2614,58 +2569,6 @@ cci_get_autocommit (int mapped_conn_id)
   con_handle->used = false;
 
   return con_handle->autocommit_mode;
-}
-
-int
-cci_set_holdability (int mapped_conn_id, int holdable)
-{
-  T_CON_HANDLE *con_handle = NULL;
-  int error = 0;
-
-  if (holdable < 0 || holdable > 1)
-    {
-      return CCI_ER_INVALID_HOLDABILITY;
-    }
-
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg
-		   ("cci_set_con_handle_holdable %d", holdable));
-#endif
-
-  error = hm_get_connection (mapped_conn_id, &con_handle);
-  if (error != CCI_ER_NO_ERROR)
-    {
-      return error;
-    }
-  reset_error_buffer (&(con_handle->err_buf));
-
-  hm_set_con_handle_holdable (con_handle, holdable);
-  con_handle->used = false;
-
-  return error;
-}
-
-int
-cci_get_holdability (int mapped_conn_id)
-{
-  T_CON_HANDLE *con_handle = NULL;
-  int error = 0;
-
-#ifdef CCI_DEBUG
-  CCI_DEBUG_PRINT (print_debug_msg
-		   ("cci_get_con_handle_holdable %d",
-		    con_handle->is_holdable));
-#endif
-
-  error = hm_get_connection (mapped_conn_id, &con_handle);
-  if (error != CCI_ER_NO_ERROR)
-    {
-      return error;
-    }
-  reset_error_buffer (&(con_handle->err_buf));
-  con_handle->used = false;
-
-  return hm_get_con_handle_holdable (con_handle);
 }
 
 int
@@ -4332,17 +4235,11 @@ cci_get_err_msg_internal (int error)
     case CCI_ER_RESULT_SET_CLOSED:
       return "Result set is closed";
 
-    case CCI_ER_INVALID_HOLDABILITY:
-      return "Invalid holdability mode. The only accepted values are 0 or 1";
-
     case CCI_ER_NOT_UPDATABLE:
       return "Request handle is not updatable";
 
     case CCI_ER_INVALID_ARGS:
       return "Invalid argument";
-
-    case CCI_ER_USED_CONNECTION:
-      return "This connection is used already.";
 
     case CCI_ER_NO_SHARD_AVAILABLE:
       return "No shard available";
@@ -4428,9 +4325,6 @@ cci_get_err_msg_internal (int error)
     case CAS_ER_MAX_PREPARED_STMT_COUNT_EXCEEDED:
       return "Cannot prepare more than MAX_PREPARED_STMT_COUNT statements";
 
-    case CAS_ER_HOLDABLE_NOT_ALLOWED:
-      return "Holdable results may not be updatable or sensitive";
-
     case CAS_ER_MAX_CLIENT_EXCEEDED:
       return "Proxy refused client connection. max clients exceeded";
 
@@ -4465,7 +4359,7 @@ cci_get_error_msg (int error, T_CCI_ERROR * cci_err, char *buf, int bufsize)
     }
   else
     {
-      if ((error < CCI_ER_DBMS) && (error > CCI_ER_END))
+      if ((error < CCI_ER_DBMS) && (error > CAS_ER_DBMS))
 	{
 	  snprintf (buf, bufsize, "CCI Error : %s", err_msg);
 	}
@@ -4620,17 +4514,7 @@ fetch_cmd (int mapped_stmt_id, char flag, T_CCI_ERROR * err_buf)
     }
   reset_error_buffer (&(con_handle->err_buf));
 
-  if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
-      && (flag & CCI_FETCH_SENSITIVE) != 0)
-    {
-      error = CAS_ER_HOLDABLE_NOT_ALLOWED;
-    }
-
-  if (error >= 0)
-    {
-      error = qe_fetch (req_handle, con_handle, flag, result_set_index,
-			&(con_handle->err_buf));
-    }
+  error = qe_fetch (req_handle, con_handle, flag, result_set_index, err_buf);
 
   if (IS_OUT_TRAN (con_handle))
     {
@@ -4854,8 +4738,6 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_CHAR";
     case CCI_U_TYPE_STRING:
       return "CCI_U_TYPE_STRING";
-    case CCI_U_TYPE_ENUM:
-      return "CCI_U_TYPE_ENUM";
     case CCI_U_TYPE_NCHAR:
       return "CCI_U_TYPE_NCHAR";
     case CCI_U_TYPE_VARNCHAR:
@@ -5067,8 +4949,8 @@ connect_prepare_again (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle,
 }
 
 static T_CON_HANDLE *
-get_new_connection (char *ip, int port, char *db_name,
-		    char *db_user, char *dbpasswd)
+get_new_connection (char *ip, int port, char *db_name, char *db_user,
+		    char *dbpasswd)
 {
   T_CON_HANDLE *con_handle;
   unsigned char ip_addr[4];
@@ -5447,6 +5329,7 @@ cci_check_property (char **property, T_CCI_ERROR * err_buf)
     }
 
   return true;
+
 }
 
 static void
@@ -5610,21 +5493,9 @@ cci_datasource_create (T_CCI_PROPERTIES * prop, T_CCI_ERROR * err_buf)
   reset_error_buffer (&latest_err_buf);
 
   ds->user = cci_property_get (prop, datasource_key[CCI_DS_KEY_USER]);
-  if (ds->user == NULL)
+  if (cci_check_property (&ds->user, &latest_err_buf) == false)
     {
-      /* a user may b e null */
-      ds->user = strdup ("");
-      if (ds->user == NULL)
-	{
-	  goto create_datasource_error;
-	}
-    }
-  else
-    {
-      if (!cci_check_property (&ds->user, &latest_err_buf))
-	{
-	  goto create_datasource_error;
-	}
+      goto create_datasource_error;
     }
 
   ds->pass = cci_property_get (prop, datasource_key[CCI_DS_KEY_PASSWORD]);
@@ -6033,7 +5904,6 @@ cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
 		    CCI_REALLOC_FUNCTION realloc_func,
 		    CCI_CALLOC_FUNCTION calloc_func)
 {
-#if !defined(WINDOWS)
   /* none or all should be set */
   if (malloc_func == NULL && free_func == NULL
       && realloc_func == NULL && calloc_func == NULL)
@@ -6057,7 +5927,6 @@ cci_set_allocators (CCI_MALLOC_FUNCTION malloc_func,
       cci_realloc = realloc_func;
       cci_calloc = calloc_func;
     }
-#endif
 
   return CCI_ER_NO_ERROR;
 }
@@ -6127,7 +5996,15 @@ cci_time_string (char *buf, struct timeval *time_val)
       millisec = time_val->tv_usec / 1000;
     }
 
+#if defined(WINDOWS)
+  tm_p = localtime (&sec);
+  if (tm_p)
+    {
+      tm = *tm_p;
+    }
+#else
   tm_p = localtime_r (&sec, &tm);
+#endif
   tm.tm_mon++;
 
   buf[0] = (tm.tm_mon / 10) + '0';

@@ -41,10 +41,6 @@ extern "C"
 #define __attribute__(X)
 #endif
 
-#if defined(MAC_OS)
-#include <stdlib.h>
-#endif
-
 #if defined(WINDOWS)
 #define IMPORT_VAR 	__declspec(dllimport)
 #define EXPORT_VAR 	__declspec(dllexport)
@@ -71,8 +67,6 @@ extern "C"
 #define ONE_MIN		60000
 #define ONE_HOUR	3600000
 
-#define CTIME_MAX 64
-
 #if defined(WINDOWS)
 #include <fcntl.h>
 #include <direct.h>
@@ -84,6 +78,8 @@ extern "C"
 #include <winbase.h>
 #include <errno.h>
 #include <assert.h>
+
+#define MAP_FAILED  NULL
 
 /* not defined errno on Windows */
 #define ENOMSG      100
@@ -113,14 +109,15 @@ extern "C"
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
 #define strtoull            _strtoui64
-#define stat		    _stati64
-#define fstat		    _fstati64
+#define stat                _stati64
+#define fstat               _fstati64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno
+#define localtime_r(time, tm)   localtime_s(tm, (const time_t *)(time))
+#define gmtime_r(time, tm)	((void)(tm), gmtime(time))
 #define vsnprintf	cub_vsnprintf
 #define tempnam         _tempnam
-#define fprintf		_fprintf_p
 
 #if (_WIN32_WINNT < 0x0600)
 #define POLLRDNORM  0x0100
@@ -142,7 +139,7 @@ extern "C"
     SHORT events;
     SHORT revents;
   };
-#endif				/* (_WIN32_WINNT < 0x0600) */
+#endif				// (_WIN32_WINNT < 0x0600)
 
   typedef unsigned long int nfds_t;
   extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);
@@ -232,10 +229,6 @@ extern "C"
 
   extern int getlogin_r (char *buf, size_t bufsize);
 
-  extern struct tm *localtime_r (const time_t * time, struct tm *tm_val);
-
-  extern char *ctime_r (const time_t * time, char *time_buf);
-
 #if 0
   extern int umask (int mask);
 #endif
@@ -275,21 +268,6 @@ extern "C"
 /*
 #define _setjmp                 setjmp
 */
-#elif !defined(MAC_OS) /* WINDOWS */
-
-#if !defined(HAVE_CTIME_R)
-#  error "HAVE_CTIME_R"
-#endif
-
-#if !defined(HAVE_LOCALTIME_R)
-#  error "HAVE_LOCALTIME_R"
-#endif
-
-#if !defined(HAVE_DRAND48_R)
-#  error "HAVE_DRAND48_R"
-#endif
-
-
 #endif				/* WINDOWS */
 
 
@@ -372,17 +350,15 @@ extern "C"
 #if !defined(HAVE_ASPRINTF)
   extern int asprintf (char **ptr, const char *format, ...);
 #endif				/* HAVE_ASPRINTF */
+
 #if defined(HAVE_ERR_H)
 #include <err.h>
 #else
 #define err(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #define errx(fd, ...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
 #endif
+
   extern int cub_dirname_r (const char *path, char *pathbuf, size_t buflen);
-#if defined(AIX)
-  double aix_ceil (double x);
-#define ceil(x) aix_ceil(x)
-#endif
 
 #if !defined(HAVE_DIRNAME)
   char *dirname (const char *path);
@@ -467,8 +443,7 @@ extern "C"
   int cub_vsnprintf (char *buffer, size_t count, const char *format,
 		     va_list argptr);
 #endif
-
-#if defined(WINDOWS) || defined(MAC_OS)
+#if defined(WINDOWS)
 /* The following structure is used to generate uniformly distributed
  * pseudo-random numbers reentrantly.
  */
@@ -476,9 +451,6 @@ extern "C"
   {
     unsigned short _rand48_seed[3];
   };
-#endif
-
-#if defined(WINDOWS)
 
 /* These functions are implemented in rand.c. And rand.c will be included
  * on Windows build.
@@ -489,7 +461,6 @@ extern "C"
   extern int srand48_r (long int seedval, struct drand48_data *buffer);
   extern int lrand48_r (struct drand48_data *buffer, long int *result);
   extern int drand48_r (struct drand48_data *buffer, double *result);
-  extern int rand_r (unsigned int *seedp);
 
   extern double round (double d);
 
@@ -500,13 +471,9 @@ extern "C"
   } pthread_mutex_t;
 
   typedef HANDLE pthread_mutexattr_t;
-#endif
 
-#if defined(WINDOWS) || defined(MAC_OS)
+
 #define PTHREAD_MUTEX_INITIALIZER	{{ NULL, 0, 0, NULL, NULL, 0 }, NULL}
-#endif
-
-#if defined(WINDOWS)
 
   typedef union
   {
@@ -746,20 +713,6 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
-
-#if defined(WINDOWS)
-extern double strtod_win (const char *str, char **end_ptr);
-#define string_to_double(str, end_ptr) strtod_win((str), (end_ptr));
-#else
-#define string_to_double(str, end_ptr) strtod((str), (end_ptr))
-#endif
-
-extern INT64 timeval_diff_in_msec (const struct timeval *end_time,
-				   const struct timeval *start_time);
-extern int timeval_add_msec (struct timeval *added_time,
-			     const struct timeval *start_time, int msec);
-extern int timeval_to_timespec (struct timespec *to,
-				const struct timeval *from);
 
 extern FILE *port_open_memstream (char **ptr, size_t * sizeloc);
 

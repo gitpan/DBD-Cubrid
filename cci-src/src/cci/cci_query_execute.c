@@ -311,30 +311,11 @@ qe_end_tran (T_CON_HANDLE * con_handle, char type, T_CCI_ERROR * err_buf)
   if (con_handle->broker_info[BROKER_INFO_STATEMENT_POOLING] !=
       CAS_STATEMENT_POOLING_ON)
     {
-      if (type == CCI_TRAN_ROLLBACK)
-	{
-	  hm_req_handle_free_all (con_handle);
-	}
-      else
-	{
-	  hm_req_handle_free_all_unholdable (con_handle);
-	}
-    }
-  else
-    {
-      if (type == CCI_TRAN_ROLLBACK)
-	{
-	  /* close all results sets */
-	  hm_req_handle_close_all_resultsets (con_handle);
-	}
-      else
-	{
-	  /* close only unholdable results sets */
-	  hm_req_handle_close_all_unholdable_resultsets (con_handle);
-	}
+      hm_req_handle_free_all (con_handle);
     }
 
-  keep_connection = true;
+  keep_connection = (con_handle->broker_info[BROKER_INFO_KEEP_CONNECTION]
+		     == CAS_KEEP_CONNECTION_ON);
 
   if (con_handle->alter_host_id > 0 && con_handle->rc_time > 0)
     {
@@ -430,12 +411,6 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
 
   ADD_ARG_STR (&net_buf, req_handle->sql_text, sql_stmt_size,
 	       con_handle->charset);
-
-  if (hm_get_con_handle_holdable (con_handle))
-    {
-      /* make sure statement is holdable */
-      flag |= CCI_PREPARE_HOLDABLE;
-    }
   ADD_ARG_BYTES (&net_buf, &flag, 1);
 
   autocommit_flag = (char) con_handle->autocommit_mode;
@@ -495,15 +470,11 @@ qe_prepare (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->handle_type = HANDLE_PREPARE;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
-  if ((flag & CCI_PREPARE_UPDATABLE) != 0)
-    {
-      flag |= CCI_PREPARE_INCLUDE_OID;
-    }
+  if (flag == CCI_PREPARE_UPDATABLE)
+    flag |= CCI_PREPARE_INCLUDE_OID;
   req_handle->prepare_flag = flag;
   req_handle->cursor_pos = 0;
-  req_handle->is_closed = 0;
   req_handle->valid = 1;
-  req_handle->is_from_current_transaction = 1;
 
   if (!reuse)
     {
@@ -801,8 +772,6 @@ qe_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       FREE_MEM (result_msg);
     }
 
-  req_handle->is_closed = 0;
-  req_handle->is_from_current_transaction = 1;
 
   return res_count;
 
@@ -953,15 +922,11 @@ qe_prepare_and_execute (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle,
   req_handle->handle_type = HANDLE_PREPARE;
   req_handle->server_handle_id = result_code;
   req_handle->cur_fetch_tuple_index = -1;
-  if ((prepare_flag & CCI_PREPARE_UPDATABLE) != 0)
-    {
-      prepare_flag |= CCI_PREPARE_INCLUDE_OID;
-    }
+  if (prepare_flag == CCI_PREPARE_UPDATABLE)
+    prepare_flag |= CCI_PREPARE_INCLUDE_OID;
   req_handle->prepare_flag = prepare_flag;
   req_handle->cursor_pos = 0;
-  req_handle->is_closed = 0;
   req_handle->valid = 1;
-  req_handle->is_from_current_transaction = 1;
 
   if (req_handle->stmt_type == CUBRID_STMT_SELECT)
     {
@@ -1085,23 +1050,22 @@ prepare_and_execute_error:
   return err_code;
 }
 
-
 void
-qe_bind_value_free (T_REQ_HANDLE * req_handle)
+qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value)
 {
   int i;
 
-  if (req_handle->bind_value == NULL)
+  if (bind_value == NULL)
     {
       return;
     }
 
-  for (i = 0; i < req_handle->num_bind; i++)
+  for (i = 0; i < num_bind; i++)
     {
-      if (req_handle->bind_value[i].flag == BIND_PTR_DYNAMIC)
+      if (bind_value[i].flag == BIND_PTR_DYNAMIC)
 	{
-	  FREE_MEM (req_handle->bind_value[i].value);
-	  req_handle->bind_value[i].flag = BIND_PTR_STATIC;
+	  FREE_MEM (bind_value[i].value);
+	  bind_value[i].flag = BIND_PTR_STATIC;
 	}
     }
 }
@@ -1166,12 +1130,13 @@ qe_get_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 	      if (param_name == CCI_PARAM_LOCK_TIMEOUT)
 		{
 		  broker_ver = hm_get_broker_version (con_handle);
-		  if (!hm_broker_understand_the_protocol
+		  if (hm_broker_understand_the_protocol
 		      (broker_ver, PROTOCOL_V2))
 		    {
 		      if (val > 0)
 			{
-			  val = val * 1000;	/* second --> millisecond */
+			  /* For backward compatibility */
+			  val = val / 1000;	/* millisecond --> second */
 			}
 		    }
 		}
@@ -1250,49 +1215,6 @@ qe_set_db_parameter (T_CON_HANDLE * con_handle, T_CCI_DB_PARAM param_name,
 }
 
 int
-qe_close_query_result (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
-{
-  int err_code = 0;
-  T_NET_BUF net_buf;
-  char func_code = CAS_FC_CURSOR_CLOSE;
-  T_BROKER_VERSION broker_ver;
-
-  if (!hm_get_con_handle_holdable (con_handle))
-    {
-      return err_code;
-    }
-
-  net_buf_init (&net_buf);
-
-  broker_ver = hm_get_broker_version (con_handle);
-  if (hm_broker_match_the_protocol (broker_ver, PROTOCOL_V2))
-    {
-      func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
-    }
-
-  net_buf_cp_str (&net_buf, &func_code, 1);
-  ADD_ARG_INT (&net_buf, req_handle->server_handle_id);
-
-  if (net_buf.err_code < 0)
-    {
-      err_code = net_buf.err_code;
-      net_buf_clear (&net_buf);
-      return err_code;
-    }
-
-  err_code = net_send_msg (con_handle, net_buf.data, net_buf.data_size);
-  net_buf_clear (&net_buf);
-  if (err_code < 0)
-    {
-      return err_code;
-    }
-
-  err_code = net_recv_msg (con_handle, NULL, NULL, NULL);
-
-  return err_code;
-}
-
-int
 qe_close_req_handle (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle)
 {
   return qe_close_req_handle_internal (req_handle, con_handle, false);
@@ -1318,11 +1240,7 @@ qe_close_req_handle_internal (T_REQ_HANDLE * req_handle,
       return 0;
     }
 
-  if (req_handle->stmt_type == CUBRID_STMT_SELECT ||
-      req_handle->stmt_type == CUBRID_STMT_GET_STATS ||
-      req_handle->stmt_type == CUBRID_STMT_CALL ||
-      req_handle->stmt_type == CUBRID_STMT_CALL_SP ||
-      req_handle->stmt_type == CUBRID_STMT_EVALUATE || force_close)
+  if (force_close)
     {
       goto send_close_handle_msg;
     }
@@ -1447,11 +1365,6 @@ qe_cursor (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, int offset,
   char *cur_p;
   int tuple_num;
   int cursor_pos;
-
-  if (req_handle->is_closed)
-    {
-      return CCI_ER_RESULT_SET_CLOSED;
-    }
 
   if (req_handle->handle_type == HANDLE_PREPARE)
     {
@@ -1627,11 +1540,6 @@ qe_fetch (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, char flag,
       return CCI_ER_NO_MORE_DATA;
     }
 
-  if (req_handle->is_closed)
-    {
-      return CCI_ER_RESULT_SET_CLOSED;
-    }
-
   if (req_handle->fetched_tuple_begin > 0 &&
       req_handle->cursor_pos >= req_handle->fetched_tuple_begin &&
       req_handle->cursor_pos <= req_handle->fetched_tuple_end)
@@ -1714,11 +1622,6 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
   int err_code;
   int num_cols;
 
-  if (req_handle->is_closed)
-    {
-      return CCI_ER_RESULT_SET_CLOSED;
-    }
-
   if (req_handle->stmt_type == CUBRID_STMT_CALL_SP)
     {
       num_cols = req_handle->num_bind + 1;
@@ -1774,9 +1677,8 @@ qe_get_data (T_CON_HANDLE * con_handle, T_REQ_HANDLE * req_handle, int col_no,
   switch (a_type)
     {
     case CCI_A_TYPE_STR:
-      err_code =
-	qe_get_data_str (&(req_handle->conv_value_buffer), u_type,
-			 col_value_p, data_size, value, indicator);
+      err_code = qe_get_data_str (&(req_handle->conv_value_buffer), u_type,
+				  col_value_p, data_size, value, indicator);
       break;
     case CCI_A_TYPE_BIGINT:
       err_code = qe_get_data_bigint (u_type, col_value_p, value);
@@ -3209,7 +3111,6 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
       {
 #ifdef UNICODE_DATA
 	char *tmp_p;
@@ -3386,7 +3287,6 @@ qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
       if (ut_str_to_bigint (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3443,7 +3343,6 @@ qe_get_data_int (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
       if (ut_str_to_int (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3500,7 +3399,6 @@ qe_get_data_float (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
       if (ut_str_to_float (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -3558,7 +3456,6 @@ qe_get_data_double (T_CCI_U_TYPE u_type, char *col_value_p, void *value)
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
-    case CCI_U_TYPE_ENUM:
       if (ut_str_to_double (col_value_p, &data) < 0)
 	return CCI_ER_TYPE_CONVERSION;
       break;
@@ -4342,6 +4239,7 @@ qe_get_shard_info (T_CON_HANDLE * con_handle, T_CCI_SHARD_INFO ** shard_info,
 int
 qe_shard_info_free (T_CCI_SHARD_INFO * shard_info)
 {
+  int i;
   T_CCI_SHARD_INFO *cur_shard_info;
   int prev_shard_id = SHARD_ID_INVALID;
 
@@ -4766,12 +4664,11 @@ fetch_info_decode (char *buf, int size, int num_cols,
 	    }
 
 #if defined (WINDOWS)
-	  if (charset != NULL
-	      && (req_handle->col_info[j].type == CCI_U_TYPE_CHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_STRING
-		  || req_handle->col_info[j].type == CCI_U_TYPE_NCHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_VARNCHAR
-		  || req_handle->col_info[j].type == CCI_U_TYPE_ENUM))
+	  if (charset != NULL &&
+	      (req_handle->col_info[j].type == CCI_U_TYPE_CHAR ||
+	       req_handle->col_info[j].type == CCI_U_TYPE_STRING ||
+	       req_handle->col_info[j].type == CCI_U_TYPE_NCHAR ||
+	       req_handle->col_info[j].type == CCI_U_TYPE_VARNCHAR))
 	    {
 	      err_code =
 		decode_result_col (col_p, data_size,
@@ -4931,7 +4828,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   char *cur_p = buf_p;
   int remain_size = *size;
   int num_col_info = 0;
-  T_CCI_COL_INFO *col_info;
+  T_CCI_COL_INFO *col_info = NULL;
   int i;
 
   if (ret_col_info)
@@ -4958,11 +4855,10 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
   remain_size -= NET_SIZE_INT;
   cur_p += NET_SIZE_INT;
 
-  col_info = NULL;
   if (num_col_info > 0)
     {
-      col_info = (T_CCI_COL_INFO *) MALLOC (sizeof (T_CCI_COL_INFO)
-					    * num_col_info);
+      col_info =
+	(T_CCI_COL_INFO *) MALLOC (sizeof (T_CCI_COL_INFO) * num_col_info);
       if (col_info == NULL)
 	{
 	  return CCI_ER_NO_MORE_MEMORY;
@@ -5089,7 +4985,7 @@ get_column_info (char *buf_p, int *size, T_CCI_COL_INFO ** ret_col_info,
 	    {
 	      goto get_column_info_error;
 	    }
-	  col_info[i].is_auto_increment = *cur_p;
+	  NET_STR_TO_BYTE (col_info[i].is_auto_increment, cur_p);
 	  remain_size -= NET_SIZE_BYTE;
 	  cur_p += NET_SIZE_BYTE;
 
@@ -5181,8 +5077,8 @@ oid_get_info_decode (char *buf_p, int remain_size, T_REQ_HANDLE * req_handle,
   int err_code;
   char *class_name;
   char *cur_p = buf_p;
-  int size;
   char *next_buf_p;
+  int size;
   T_CCI_COL_INFO *col_info = NULL;
 
   if (remain_size < NET_SIZE_INT)
@@ -5400,7 +5296,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
-	case CCI_U_TYPE_ENUM:
 	  if (flag == CCI_BIND_PTR)
 	    {
 	      bind_value->value = value;
@@ -5558,7 +5453,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
-	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[64];
 	    ut_int_to_str (i_value, buf, 64);
@@ -5608,7 +5502,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
-	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[64];
 	    ut_int_to_str (bi_value, buf, 64);
@@ -5658,7 +5551,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
-	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[256];
 	    ut_float_to_str (f_value, buf, 256);
@@ -5706,7 +5598,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag,
 	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
-	case CCI_U_TYPE_ENUM:
 	  {
 	    char buf[512];
 	    ut_double_to_str (d_value, buf, 512);
@@ -5909,7 +5800,6 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, char u_type, void *value,
     case CCI_U_TYPE_STRING:
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
-    case CCI_U_TYPE_ENUM:
       if (value == NULL)
 	{
 	  ADD_ARG_STR (net_buf, "", 1, charset);
