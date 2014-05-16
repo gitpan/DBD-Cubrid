@@ -145,6 +145,7 @@ extern "C"
 #define CCI_PREPARE_INCLUDE_OID		0x01
 #define CCI_PREPARE_UPDATABLE		0x02
 #define CCI_PREPARE_QUERY_INFO          0x04
+#define CCI_PREPARE_HOLDABLE		0x08
 #define CCI_PREPARE_CALL		0x40
 
 #define CCI_EXEC_ASYNC			0x01
@@ -200,8 +201,10 @@ extern "C"
 /* database connection URL */
 #define CCI_DS_PROPERTY_URL				"url"
 
-/* number of connection that are created when the pool is started */
+/* number of connection that are borrowed */
 #define CCI_DS_PROPERTY_POOL_SIZE			"pool_size"
+/* number of connection that are created when the pool is started */
+#define CCI_DS_PROPERTY_MAX_POOL_SIZE			"max_pool_size"
 /* max wait msec for a connection to be returned, or -1 to wait indefinitely */
 #define CCI_DS_PROPERTY_MAX_WAIT			"max_wait"
 /* enable prepared statement pooling */
@@ -227,6 +230,14 @@ extern "C"
     CCI_AUTOCOMMIT_FALSE = 0,
     CCI_AUTOCOMMIT_TRUE
   } CCI_AUTOCOMMIT_MODE;
+
+  /* for cci cas_change mode support */
+  typedef enum
+  {
+    CCI_CAS_CHANGE_MODE_UNKNOWN = 0,
+    CCI_CAS_CHANGE_MODE_AUTO = 1,
+    CCI_CAS_CHANGE_MODE_KEEP = 2
+  } CCI_CAS_CHANGE_MODE_MODE;
 
 #define SET_AUTOCOMMIT_FROM_CASINFO(c) \
   (c)->autocommit_mode = \
@@ -307,8 +318,9 @@ extern "C"
     CCI_U_TYPE_DATETIME = 22,
     CCI_U_TYPE_BLOB = 23,
     CCI_U_TYPE_CLOB = 24,
+    CCI_U_TYPE_ENUM = 25,
 
-    CCI_U_TYPE_LAST = CCI_U_TYPE_CLOB
+    CCI_U_TYPE_LAST = CCI_U_TYPE_ENUM
   } T_CCI_U_TYPE;
 
   typedef void *T_CCI_SET;
@@ -373,60 +385,65 @@ extern "C"
   typedef enum
   {
     CCI_ER_NO_ERROR = 0,
-    CCI_ER_DBMS = -1,
-    CCI_ER_CON_HANDLE = -2,
-    CCI_ER_NO_MORE_MEMORY = -3,
-    CCI_ER_COMMUNICATION = -4,
-    CCI_ER_NO_MORE_DATA = -5,
-    CCI_ER_TRAN_TYPE = -6,
-    CCI_ER_STRING_PARAM = -7,
-    CCI_ER_TYPE_CONVERSION = -8,
-    CCI_ER_BIND_INDEX = -9,
-    CCI_ER_ATYPE = -10,
-    CCI_ER_NOT_BIND = -11,
-    CCI_ER_PARAM_NAME = -12,
-    CCI_ER_COLUMN_INDEX = -13,
-    CCI_ER_SCHEMA_TYPE = -14,
-    CCI_ER_FILE = -15,
-    CCI_ER_CONNECT = -16,
+    CCI_ER_DBMS = -20001,
+    CCI_ER_CON_HANDLE = -20002,
+    CCI_ER_NO_MORE_MEMORY = -20003,
+    CCI_ER_COMMUNICATION = -20004,
+    CCI_ER_NO_MORE_DATA = -20005,
+    CCI_ER_TRAN_TYPE = -20006,
+    CCI_ER_STRING_PARAM = -20007,
+    CCI_ER_TYPE_CONVERSION = -20008,
+    CCI_ER_BIND_INDEX = -20009,
+    CCI_ER_ATYPE = -20010,
+    CCI_ER_NOT_BIND = -20011,
+    CCI_ER_PARAM_NAME = -20012,
+    CCI_ER_COLUMN_INDEX = -20013,
+    CCI_ER_SCHEMA_TYPE = -20014,
+    CCI_ER_FILE = -20015,
+    CCI_ER_CONNECT = -20016,
 
-    CCI_ER_ALLOC_CON_HANDLE = -17,
-    CCI_ER_REQ_HANDLE = -18,
-    CCI_ER_INVALID_CURSOR_POS = -19,
-    CCI_ER_OBJECT = -20,
-    CCI_ER_CAS = -21,
-    CCI_ER_HOSTNAME = -22,
-    CCI_ER_OID_CMD = -23,
+    CCI_ER_ALLOC_CON_HANDLE = -20017,
+    CCI_ER_REQ_HANDLE = -20018,
+    CCI_ER_INVALID_CURSOR_POS = -20019,
+    CCI_ER_OBJECT = -20020,
+    CCI_ER_CAS = -20021,
+    CCI_ER_HOSTNAME = -20022,
+    CCI_ER_OID_CMD = -20023,
 
-    CCI_ER_BIND_ARRAY_SIZE = -24,
-    CCI_ER_ISOLATION_LEVEL = -25,
+    CCI_ER_BIND_ARRAY_SIZE = -20024,
+    CCI_ER_ISOLATION_LEVEL = -20025,
 
-    CCI_ER_SET_INDEX = -26,
-    CCI_ER_DELETED_TUPLE = -27,
+    CCI_ER_SET_INDEX = -20026,
+    CCI_ER_DELETED_TUPLE = -20027,
 
-    CCI_ER_SAVEPOINT_CMD = -28,
-    CCI_ER_THREAD_RUNNING = -29,
-    CCI_ER_INVALID_URL = -30,
-    CCI_ER_INVALID_LOB_READ_POS = -31,
-    CCI_ER_INVALID_LOB_HANDLE = -32,
+    CCI_ER_SAVEPOINT_CMD = -20028,
+    CCI_ER_THREAD_RUNNING = -20029,
+    CCI_ER_INVALID_URL = -20030,
+    CCI_ER_INVALID_LOB_READ_POS = -20031,
+    CCI_ER_INVALID_LOB_HANDLE = -20032,
 
-    CCI_ER_NO_PROPERTY = -33,
-    CCI_ER_PROPERTY_TYPE = -34,
-    CCI_ER_INVALID_DATASOURCE = -35,
-    CCI_ER_DATASOURCE_TIMEOUT = -36,
-    CCI_ER_DATASOURCE_TIMEDWAIT = -37,
+    CCI_ER_NO_PROPERTY = -20033,
+    CCI_ER_PROPERTY_TYPE = -20034,
+    CCI_ER_INVALID_DATASOURCE = -20035,
+    CCI_ER_DATASOURCE_TIMEOUT = -20036,
+    CCI_ER_DATASOURCE_TIMEDWAIT = -20037,
 
-    CCI_ER_LOGIN_TIMEOUT = -38,
-    CCI_ER_QUERY_TIMEOUT = -39,
-    CCI_ER_RESULT_SET_CLOSED = -40,
-    CCI_ER_NOT_UPDATABLE = -42,
+    CCI_ER_LOGIN_TIMEOUT = -20038,
+    CCI_ER_QUERY_TIMEOUT = -20039,
 
-    CCI_ER_INVALID_ARGS = -43,
+    CCI_ER_RESULT_SET_CLOSED = -20040,
 
-    CCI_ER_NO_SHARD_AVAILABLE = -45,
-    CCI_ER_INVALID_SHARD = -46,
+    CCI_ER_INVALID_HOLDABILITY = -20041,
+    CCI_ER_NOT_UPDATABLE = -20042,
 
-    CCI_ER_NOT_IMPLEMENTED = -99
+    CCI_ER_INVALID_ARGS = -20043,
+    CCI_ER_USED_CONNECTION = -20044,
+
+    CCI_ER_NO_SHARD_AVAILABLE = -20045,
+    CCI_ER_INVALID_SHARD = -20046,
+
+    CCI_ER_NOT_IMPLEMENTED = -20099,
+    CCI_ER_END = -20100
   } T_CCI_ERROR_CODE;
 
 #if !defined(CAS)
@@ -544,8 +561,10 @@ extern "C"
 #define SQLX_CMD_SET_SYS_PARAMS   CUBRID_STMT_SET_SYS_PARAMS
 #define SQLX_CMD_ALTER_INDEX   CUBRID_STMT_ALTER_INDEX
 #define SQLX_CMD_CREATE_STORED_PROCEDURE   CUBRID_STMT_CREATE_STORED_PROCEDURE
+#define SQLX_CMD_ALTER_STORED_PROCEDURE_OWNER   CUBRID_STMT_ALTER_STORED_PROCEDURE_OWNER
 #define SQLX_CMD_DROP_STORED_PROCEDURE   CUBRID_STMT_DROP_STORED_PROCEDURE
 #define SQLX_CMD_SELECT_UPDATE   CUBRID_STMT_SELECT_UPDATE
+#define SQLX_CMD_SET_NAMES   CUBRID_STMT_SET_NAMES
 #define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
 #define SQLX_CMD_CALL_SP CUBRID_STMT_CALL_SP
@@ -625,7 +644,8 @@ extern "C"
     CCI_DS_KEY_DISCONNECT_ON_QUERY_TIMEOUT,
     CCI_DS_KEY_DEFAULT_AUTOCOMMIT,
     CCI_DS_KEY_DEFAULT_ISOLATION,
-    CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT
+    CCI_DS_KEY_DEFAULT_LOCK_TIMEOUT,
+    CCI_DS_KEY_MAX_POOL_SIZE
   } T_CCI_DATASOURCE_KEY;
 
 #if !defined(CAS)
@@ -706,10 +726,10 @@ extern "C"
 					     char *db_name,
 					     char *db_user, char *dbpasswd);
   extern int cci_connect_ex (char *ip, int port, char *db, char *user,
-			     char *pass, T_CCI_ERROR * error);
+			     char *pass, T_CCI_ERROR * err_buf);
   extern int cci_connect_with_url (char *url, char *user, char *password);
   extern int cci_connect_with_url_ex (char *url, char *user, char *pass,
-				      T_CCI_ERROR * error);
+				      T_CCI_ERROR * err_buf);
   extern int cci_disconnect (int con_handle, T_CCI_ERROR * err_buf);
   extern int cci_end_tran (int con_handle, char type, T_CCI_ERROR * err_buf);
   extern int cci_prepare (int con_handle,
@@ -731,6 +751,8 @@ extern "C"
 				   void *value, T_CCI_ERROR * err_buf);
   extern int cci_set_db_parameter (int con_handle, T_CCI_DB_PARAM param_name,
 				   void *value, T_CCI_ERROR * err_buf);
+  extern int cci_set_cas_change_mode (int mapped_conn_id, int mode,
+				      T_CCI_ERROR * err_buf);
   extern long cci_escape_string (int con_h_id, char *to, const char *from,
 				 unsigned long length, T_CCI_ERROR * err_buf);
   extern int cci_close_query_result (int req_handle, T_CCI_ERROR * err_buf);
@@ -763,6 +785,13 @@ extern "C"
   extern CCI_AUTOCOMMIT_MODE cci_get_autocommit (int con_handle);
   extern int cci_set_autocommit (int con_handle,
 				 CCI_AUTOCOMMIT_MODE autocommit_mode);
+  extern int cci_set_holdability (int con_handle_id, int holdable);
+  extern int cci_get_holdability (int con_handle_id);
+  extern int cci_set_login_timeout (int mapped_conn_id, int timeout,
+				    T_CCI_ERROR * err_buf);
+  extern int cci_get_login_timeout (int mapped_conn_id, int *timeout,
+				    T_CCI_ERROR * err_buf);
+
   extern int cci_get_class_num_objs (int conn_handle, char *class_name,
 				     int flag, int *num_objs, int *num_pages,
 				     T_CCI_ERROR * err_buf);
@@ -789,6 +818,7 @@ extern "C"
 			      int index, char *value, T_CCI_ERROR * err_buf);
 
   extern int cci_is_updatable (int req_h_id);
+  extern int cci_is_holdable (int req_h_id);
   extern int cci_next_result (int req_h_id, T_CCI_ERROR * err_buf);
   extern int cci_bind_param_array_size (int req_h_id, int array_size);
   extern int cci_bind_param_array (int req_h_id,
@@ -918,6 +948,9 @@ extern "C"
 					   T_CCI_ERROR * err_buf);
   extern int cci_datasource_release (T_CCI_DATASOURCE * date_source,
 				     T_CCI_CONN conn, T_CCI_ERROR * err_buf);
+  extern int cci_datasource_change_property (T_CCI_DATASOURCE * ds,
+					     const char *key,
+					     const char *val);
 
   extern int cci_set_query_timeout (int req_h_id, int timeout);
   extern int cci_get_query_timeout (int req_h_id);

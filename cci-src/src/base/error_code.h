@@ -660,7 +660,7 @@
 #define ER_LDR_INTERNAL_REFERENCE  		    -563
 #define ER_LDR_UNIQUE_VIOLATION			    -564
 #define ER_LDR_INVALID_CONSTRUCTOR 		    -565
-#define ER_UNUSED_ERROR_ID     			    -566
+#define ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE 	    -566
 #define ER_LDR_UNEXPECTED_ARGUMENT		    -567
 #define ER_LDR_MISSING_ARGUMENT			    -568
 #define ER_LDR_MISSING_ATTRIBUTES		    -569
@@ -1273,8 +1273,10 @@
 
 #define ER_SM_INVALID_PREFIX_LENGTH                 -1022
 
-/* Please note that error codes from -1023 to -1026 are reserved for HA */
-
+/* Please note that error code -1023 is reserved for HA */
+#define ER_HA_LW_FAILED_GET_LOG_PAGE                -1024
+#define ER_HA_REPL_DELAY_DETECTED                   -1025
+#define ER_HA_REPL_DELAY_RESOLVED                   -1026
 #define ER_HA_LA_FAILED_TO_CHANGE_STATE             -1027
 #define ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG      -1028
 #define ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET     -1029
@@ -1341,7 +1343,13 @@
 
 #define ER_PRM_UNKNOWN_SYSPRM                       -1077
 
-#define ER_PB_ALL_BUFFERS_DIRTY                     -1078
+#define ER_INVALID_CHAR				    -1078
+#define ER_INVALID_SERVER_CHARSET		    -1079
+
+#define ER_SM_INVALID_FILTER_PREDICATE_LENGTH       -1080
+#define ER_SM_ALTER_COLUMN_WITH_FILTER_PRED	    -1081
+
+#define ER_PB_ALL_BUFFERS_DIRTY                     -1082
 
 #define ER_LK_DEADLOCK_SPECIFIC_INFO                -1083
 
@@ -1355,19 +1363,19 @@
 
 #define ER_HF_MAX_BESTSPACE_ENTRIES		    -1089
 
-#define ER_LOC_INIT                                 -1090
-#define ER_LOC_GEN                                  -1091
-#define ER_CANNOT_PREPARE_WITH_HOST_VAR             -1092
+#define ER_LOC_INIT				    -1090
+#define ER_LOC_GEN				    -1091
+#define ER_CANNOT_PREPARE_WITH_HOST_VAR		    -1092
 
 #define ER_OPFUNC_INET_ATON_ARG			    -1093
 #define ER_OPFUNC_INET_NTOA_ARG			    -1094
 
-#define ER_USER_NAME_TOO_LONG                       -1095
+#define ER_USER_NAME_TOO_LONG			    -1095
 
-#define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED          -1096
-#define ER_CANNOT_HAVE_PK_DEFAULT_NULL              -1097
+#define ER_ALTER_PARTITIONS_FK_NOT_ALLOWED	    -1096
+#define ER_CANNOT_HAVE_PK_DEFAULT_NULL		    -1097
 
-#define ER_LANG_CODESET_NOT_AVAILABLE               -1098
+#define ER_LANG_CODESET_NOT_AVAILABLE		    -1098
 
 #define ER_BLOCK_DDL_STMT                           -1099
 #define ER_BLOCK_NOWHERE_STMT                       -1100
@@ -1381,12 +1389,30 @@
 
 #define ER_LC_PARTIALLY_FAILED_TO_FLUSH             -1105
 
+#define ER_MERGE_TOO_MANY_SOURCE_ROWS		    -1106
+
+#define ER_NTILE_INVALID_BUCKET_NUMBER              -1107
+
+#define ER_PROC_WIDTH_BUCKET_COUNT                  -1108
+
+#define ER_INVALID_DATA_FOR_PARTITION		    -1109
+
 #define ER_BTREE_NO_SPACE			    -1110
 
 #define ER_DATA_IS_TRUNCATED_TO_PRECISION           -1111
 
+#define ER_CHAR_CONV_NO_MATCH			    -1112
+
+#define ER_BINARY_HEAP_OUT_OF_RANGE		    -1113
+
+#define ER_ARG_OUT_OF_RANGE                         -1114
+
 #define ER_LOG_STARTED_TO_UPDATE_STATISTICS         -1115
 #define ER_LOG_FINISHED_TO_UPDATE_STATISTICS        -1116
+
+#define ER_ALTER_CHANGE_ATTR_TO_FROM_SHARED_NOT_ALLOWED  -1117
+
+#define ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN  -1118
 
 #define ER_FILE_INCONSISTENT_PAGE_NOT_ALLOCED       -1119
 #define ER_FILE_INCONSISTENT_PAGE_ALLOCED           -1120
@@ -1405,12 +1431,32 @@
 #define ER_BTREE_DELETED_OVERFLOW_PAGE                -1127
 
 #define ER_LOG_RECOVERY_STARTED                     -1128
+
 #define ER_LOG_RECOVERY_FINISHED                    -1129
 
 #define ER_LK_ROLLBACK_ON_LOCK_ESCALATION	    -1130
 #define ER_SP_INVALID_HEADER                        -1131
 
-#define ER_LAST_ERROR                               -1132
+#define ER_ENCRYPTION_LIB_FAILED		    -1132
+
+#define ER_BTREE_CORRUPT_PREV_LINK                  -1135
+#define ER_BTREE_REPAIR_PREV_LINK                   -1136
+
+#define ER_MAX_RECURSION_SQL_DEPTH                  -1137
+
+#define ER_NET_HS_INCOMPAT_INTERRUPTIBILITY         -1138
+#define ER_NET_HS_INCOMPAT_RW_MODE                  -1139
+#define ER_NET_HS_HA_REPL_DELAY                     -1140
+#define ER_NET_HS_HA_REPLICA_ONLY                   -1141
+#define ER_NET_HS_REMOTE_DISABLED                   -1142
+#define ER_NET_HS_UNKNOWN_SERVER_REL                -1143
+
+#define ERR_CSS_TCP_CONNECT_TIMEDOUT                -1144
+
+#define ER_AU_CANT_ALTER_OWNER_OF_SYSTEM_CLASS      -1145
+#define ER_DIAG_VOLID_NOT_EXIST                     -1146
+
+#define ER_LAST_ERROR                               -1147
 
 /*
  * CAUTION!

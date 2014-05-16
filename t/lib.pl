@@ -28,10 +28,11 @@ $dbdriver = $mdriver; # $dbdriver is usually just the same as $mdriver.
 
 my ($database, $hostname, $port, $autocommit);
 $database = 'demodb';
-$hostname = 'localhost';
+#$hostname = '127.0.0.1';
+$hostname = 'test-db-server';
 $port = 33000;
 $test_dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port";
-$test_user = 'public';
+$test_user = 'dba';
 $test_passwd = '';
 
 $::COL_NULLABLE = 1;

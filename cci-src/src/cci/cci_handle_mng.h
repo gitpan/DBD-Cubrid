@@ -70,14 +70,13 @@ extern "C"
 	  qe_query_result_free((REQ_HANDLE)->num_query_res, (REQ_HANDLE)->qr); \
 	  (REQ_HANDLE)->cur_fetch_tuple_index = 0; \
 	  (REQ_HANDLE)->num_query_res = 0;	\
-	  (REQ_HANDLE)->num_tuple = 0;          \
+	  (REQ_HANDLE)->current_query_res = 0;  \
+	  (REQ_HANDLE)->num_tuple = 0;		\
 	  (REQ_HANDLE)->qr = NULL;		\
 	} while (0)
 
 #define ALTER_HOST_MAX_SIZE                     256
-
 #define DEFERRED_CLOSE_HANDLE_ALLOC_SIZE        256
-
 #define MONITORING_INTERVAL		    	60
 
 #define DOES_CONNECTION_HAVE_STMT_POOL(c) \
@@ -169,8 +168,11 @@ extern "C"
     T_VALUE_BUF conv_value_buffer;
     T_CCI_QUERY_RESULT *qr;
     int num_query_res;
+    int current_query_res;
     int valid;
     int query_timeout;
+    int is_closed;
+    int is_from_current_transaction;
     int shard_id;
     char is_fetch_completed;	/* used only cas4oracle */
     void *prev;
@@ -256,6 +258,7 @@ extern "C"
     int *deferred_close_handle_list;
     int deferred_close_handle_count;
     void *logger;
+    int is_holdable;
     int no_backslash_escapes;
     char *last_insert_id;
     T_CCI_ERROR err_buf;
@@ -277,6 +280,10 @@ extern "C"
   extern void hm_req_handle_free (T_CON_HANDLE * con_handle,
 				  T_REQ_HANDLE * req_handle);
   extern void hm_req_handle_free_all (T_CON_HANDLE * con_handle);
+  extern void hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle);
+  extern void hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle);
+  extern void hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE *
+							     con_handle);
   extern int hm_con_handle_free (T_CON_HANDLE * connection);
 
   extern T_CCI_ERROR_CODE hm_get_connection_by_resolved_id (int resolved_id,
@@ -313,12 +320,22 @@ extern "C"
   extern int hm_put_con_to_pool (int con);
 
   extern T_BROKER_VERSION hm_get_broker_version (T_CON_HANDLE * con_handle);
-  extern bool hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version,
-						 int require);
+  extern bool hm_broker_understand_renewed_error_code (T_CON_HANDLE *
+						       con_handle);
+  extern bool hm_broker_understand_the_protocol (T_BROKER_VERSION
+						 broker_version, int require);
   extern bool hm_broker_match_the_protocol (T_BROKER_VERSION broker_version,
 					    int require);
+
+  extern bool hm_broker_support_holdable_result (T_CON_HANDLE * con_handle);
   extern bool hm_broker_reconnect_when_server_down (T_CON_HANDLE *
 						    con_handle);
+
+  extern void hm_set_con_handle_holdable (T_CON_HANDLE * con_handle,
+					  int holdable);
+  extern int hm_get_con_handle_holdable (T_CON_HANDLE * con_handle);
+  extern int hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
+					 T_REQ_HANDLE * req_handle);
 
   extern int hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int req_id,
 				 T_REQ_HANDLE * req);

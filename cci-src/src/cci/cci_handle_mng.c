@@ -75,7 +75,6 @@
 
 #define CCI_MAX_CONNECTION_POOL         256
 
-
 /************************************************************************
  * PRIVATE TYPE DEFINITIONS						*
  ************************************************************************/
@@ -113,7 +112,6 @@ static int new_req_handle_id (T_CON_HANDLE * con_handle);
 static void con_handle_content_free (T_CON_HANDLE * con_handle);
 static void ipstr2uchar (char *ip_str, unsigned char *ip_addr);
 static int is_ip_str (char *ip_str);
-static int hostname2uchar (char *hostname, unsigned char *ip_addr);
 
 static int hm_find_host_status_index (unsigned char *ip_addr, int port);
 static void hm_set_host_status_by_addr (unsigned char *ip_addr, int port,
@@ -232,7 +230,9 @@ hm_con_handle_alloc (char *ip_str, int port, char *db_name, char *db_user,
 
   handle_id = new_con_handle_id ();
   if (handle_id <= 0)
-    goto error_end;
+    {
+      goto error_end;
+    }
 
   con_handle = (T_CON_HANDLE *) MALLOC (sizeof (T_CON_HANDLE));
   if (con_handle == NULL)
@@ -469,7 +469,6 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
 {
   char *key;
   int *data;
-  int error;
 
   data = mht_get (con->stmt_pool, sql);
   if (data != NULL)
@@ -523,7 +522,7 @@ hm_req_add_to_pool (T_CON_HANDLE * con, char *sql, int mapped_statement_id,
 int
 hm_req_get_from_pool (T_CON_HANDLE * con, T_REQ_HANDLE ** req, char *sql)
 {
-  int req_id, error;
+  int req_id;
   void *data;
 
   data = mht_rem (con->stmt_pool, sql, true, false);
@@ -571,8 +570,11 @@ hm_get_connection_internal (int mapped_id, T_CON_HANDLE ** connection,
   *connection = NULL;
 
   error = map_get_otc_value (mapped_id, &connection_id, force);
-  if (error != CCI_ER_NO_ERROR || connection_id < 1
-      || connection_id > MAX_CON_HANDLE)
+  if (error != CCI_ER_NO_ERROR)
+    {
+      return error;
+    }
+  if (connection_id < 1 || connection_id > MAX_CON_HANDLE)
     {
       return CCI_ER_CON_HANDLE;
     }
@@ -605,6 +607,7 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
   int connection_id;
   int statement_id;
   T_CON_HANDLE *conn;
+  T_CCI_ERROR_CODE error;
 
   if (connection != NULL)
     {
@@ -617,9 +620,10 @@ hm_get_statement (int mapped_id, T_CON_HANDLE ** connection,
     }
   *statement = NULL;
 
-  if (map_get_ots_value (mapped_id, &statement_id, false) != CCI_ER_NO_ERROR)
+  error = map_get_ots_value (mapped_id, &statement_id, false);
+  if (error != CCI_ER_NO_ERROR)
     {
-      return CCI_ER_REQ_HANDLE;
+      return error;
     }
 
   connection_id = GET_CON_ID (statement_id);
@@ -666,9 +670,8 @@ hm_release_connection_internal (int mapped_id,
   if (delete_handle)
     {
       error = hm_con_handle_free (*connection);
+      *connection = NULL;
     }
-
-  *connection = NULL;
 
   return error;
 }
@@ -723,11 +726,87 @@ hm_req_handle_free_all (T_CON_HANDLE * con_handle)
     {
       req_handle = con_handle->req_handle_table[i];
       if (req_handle == NULL)
-	continue;
+	{
+	  continue;
+	}
       req_handle_content_free (req_handle, 0);
       FREE_MEM (req_handle);
       con_handle->req_handle_table[i] = NULL;
       --(con_handle->req_handle_count);
+    }
+}
+
+void
+hm_req_handle_free_all_unholdable (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle = NULL;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+	{
+	  /* do not free holdable req_handles */
+	  continue;
+	}
+      req_handle_content_free (req_handle, 0);
+      FREE_MEM (req_handle);
+      con_handle->req_handle_table[i] = NULL;
+      --(con_handle->req_handle_count);
+    }
+}
+
+void
+hm_req_handle_close_all_resultsets (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle = NULL;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0
+	  && !req_handle->is_from_current_transaction)
+	{
+	  continue;
+	}
+
+      req_handle->is_closed = 1;
+    }
+}
+
+void
+hm_req_handle_close_all_unholdable_resultsets (T_CON_HANDLE * con_handle)
+{
+  int i;
+  T_REQ_HANDLE *req_handle = NULL;
+
+  for (i = 0; i < con_handle->max_req_handle; i++)
+    {
+      req_handle = con_handle->req_handle_table[i];
+      if (req_handle == NULL)
+	{
+	  continue;
+	}
+
+      if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+	{
+	  /* skip holdable req_handles */
+	  req_handle->is_from_current_transaction = 0;
+	  continue;
+	}
+
+      req_handle->is_closed = 1;
     }
 }
 
@@ -764,14 +843,19 @@ int
 hm_conv_value_buf_alloc (T_VALUE_BUF * val_buf, int size)
 {
   if (size <= val_buf->size)
-    return 0;
+    {
+      return 0;
+    }
 
   FREE_MEM (val_buf->data);
   val_buf->size = 0;
 
   val_buf->data = MALLOC (size);
   if (val_buf->data == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
+
   val_buf->size = size;
   return 0;
 }
@@ -839,7 +923,6 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 
   req_close_query_result (req_handle);
   req_handle_col_info_free (req_handle);
-  req_handle->valid = 0;
   req_handle->shard_id = CCI_SHARD_ID_INVALID;
   req_handle->is_fetch_completed = 0;
 
@@ -847,17 +930,18 @@ req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
     {
       FREE_MEM (req_handle->sql_text);
 
-      qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+      qe_bind_value_free (req_handle);
       FREE_MEM (req_handle->bind_mode);
       FREE_MEM (req_handle->bind_value);
     }
+  req_handle->valid = 0;
 }
 
 void
 req_handle_content_free_for_pool (T_REQ_HANDLE * req_handle)
 {
   req_close_query_result (req_handle);
-  qe_bind_value_free (req_handle->num_bind, req_handle->bind_value);
+  qe_bind_value_free (req_handle);
 }
 
 int
@@ -897,6 +981,7 @@ hm_find_host_status_index (unsigned char *ip_addr, int port)
 
   return index;
 }
+
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 int
@@ -947,6 +1032,53 @@ hm_set_host_status (T_CON_HANDLE * con_handle, int host_id, bool is_reachable)
     }
 }
 
+void
+hm_set_con_handle_holdable (T_CON_HANDLE * con_handle, int holdable)
+{
+  con_handle->is_holdable = holdable;
+}
+
+int
+hm_get_con_handle_holdable (T_CON_HANDLE * con_handle)
+{
+  T_BROKER_VERSION broker;
+
+  if (con_handle->is_holdable)
+    {
+      broker = hm_get_broker_version (con_handle);
+
+      if (hm_broker_support_holdable_result (con_handle)
+	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+int
+hm_get_req_handle_holdable (T_CON_HANDLE * con_handle,
+			    T_REQ_HANDLE * req_handle)
+{
+  T_BROKER_VERSION broker;
+
+  assert (con_handle != NULL && req_handle != NULL);
+
+  if ((req_handle->prepare_flag & CCI_PREPARE_HOLDABLE) != 0)
+    {
+      broker = hm_get_broker_version (con_handle);
+
+      if (hm_broker_support_holdable_result (con_handle)
+	  || broker == CAS_PROTO_MAKE_VER (PROTOCOL_V2))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 T_BROKER_VERSION
 hm_get_broker_version (T_CON_HANDLE * con_handle)
 {
@@ -971,7 +1103,22 @@ hm_get_broker_version (T_CON_HANDLE * con_handle)
 }
 
 bool
-hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version, int require)
+hm_broker_understand_renewed_error_code (T_CON_HANDLE * con_handle)
+{
+  char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
+  char p = con_handle->broker_info[BROKER_INFO_PROTO_VERSION];
+
+  if ((p & CAS_PROTO_INDICATOR) != CAS_PROTO_INDICATOR)
+    {
+      return false;
+    }
+
+  return (f & BROKER_RENEWED_ERROR_CODE) == BROKER_RENEWED_ERROR_CODE;
+}
+
+bool
+hm_broker_understand_the_protocol (T_BROKER_VERSION broker_version,
+				   int require)
 {
   if (broker_version >= CAS_PROTO_MAKE_VER (require))
     {
@@ -997,12 +1144,12 @@ hm_broker_match_the_protocol (T_BROKER_VERSION broker_version, int require)
 }
 
 bool
-hm_broker_reconnect_when_server_down (T_CON_HANDLE * con_handle)
+hm_broker_support_holdable_result (T_CON_HANDLE * con_handle)
 {
   char f = con_handle->broker_info[BROKER_INFO_FUNCTION_FLAG];
 
-  return (f & BROKER_RECONNECT_WHEN_SERVER_DOWN) ==
-    BROKER_RECONNECT_WHEN_SERVER_DOWN;
+  return (f & BROKER_SUPPORT_HOLDABLE_RESULT)
+    == BROKER_SUPPORT_HOLDABLE_RESULT;
 }
 
 void
@@ -1086,7 +1233,9 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   else
     {
       if (hostname2uchar (ip_str, ip_addr) < 0)
-	return CCI_ER_HOSTNAME;
+	{
+	  return CCI_ER_HOSTNAME;
+	}
     }
 
   memset (con_handle, 0, sizeof (T_CON_HANDLE));
@@ -1152,7 +1301,7 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
   con_handle->rc_time = 600;
   con_handle->last_failure_time = 0;
   con_handle->datasource = NULL;
-  con_handle->login_timeout = 0;
+  con_handle->login_timeout = 30000;
   con_handle->query_timeout = 0;
   con_handle->disconnect_on_query_timeout = false;
   con_handle->start_time.tv_sec = 0;
@@ -1172,6 +1321,8 @@ init_con_handle (T_CON_HANDLE * con_handle, char *ip_str, int port,
     (int *) MALLOC (sizeof (int) *
 		    con_handle->deferred_max_close_handle_count);
   con_handle->deferred_close_handle_count = 0;
+
+  con_handle->is_holdable = 1;
   con_handle->no_backslash_escapes = CCI_NO_BACKSLASH_ESCAPES_NOT_SET;
   con_handle->last_insert_id = NULL;
 
@@ -1210,7 +1361,9 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
   for (i = 0; i < con_handle->max_req_handle; i++)
     {
       if (con_handle->req_handle_table[i] == NULL)
-	return (i + 1);
+	{
+	  return (i + 1);
+	}
     }
 
   new_max_req_handle = con_handle->max_req_handle + REQ_HANDLE_ALLOC_SIZE;
@@ -1218,7 +1371,9 @@ new_req_handle_id (T_CON_HANDLE * con_handle)
     REALLOC (con_handle->req_handle_table,
 	     sizeof (T_REQ_HANDLE *) * new_max_req_handle);
   if (new_req_handle_table == NULL)
-    return CCI_ER_NO_MORE_MEMORY;
+    {
+      return CCI_ER_NO_MORE_MEMORY;
+    }
 
   handle_id = con_handle->max_req_handle + 1;
 
@@ -1278,25 +1433,13 @@ is_ip_str (char *ip_str)
   for (p = ip_str; *p; p++)
     {
       if ((*p >= '0' && *p <= '9') || (*p == '.'))
-	continue;
+	{
+	  continue;
+	}
       return 0;
     }
 
   return 1;
-}
-
-static int
-hostname2uchar (char *hostname, unsigned char *ip_addr)
-{
-  struct hostent *hp;
-
-  hp = gethostbyname (hostname);
-  if (hp == NULL)
-    return -1;
-
-  memcpy (ip_addr, hp->h_addr_list[0], 4);
-
-  return 0;
 }
 
 static void

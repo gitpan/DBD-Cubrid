@@ -90,6 +90,14 @@ extern "C"
     CAS_INFO_ADDITIONAL_FLAG = 3
   } CAS_INFO_TYPE;
 
+  typedef enum
+  {
+    CAS_CHANGE_MODE_UNKNOWN = 0,
+    CAS_CHANGE_MODE_AUTO = 1,
+    CAS_CHANGE_MODE_KEEP = 2,
+    CAS_CHANGE_MODE_DEFAULT = CAS_CHANGE_MODE_AUTO
+  } CAS_CHANGE_MODE;
+
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
@@ -104,6 +112,7 @@ extern "C"
 #define BROKER_INFO_SIZE			8
 #define BROKER_RENEWED_ERROR_CODE		0x80
 #define BROKER_SUPPORT_HOLDABLE_RESULT          0x40
+/* Do not remove or rename BROKER_RECONNECT_WHEN_SERVER_DOWN */
 #define BROKER_RECONNECT_WHEN_SERVER_DOWN       0x20
 
 /* For backward compatibility */
@@ -119,8 +128,8 @@ extern "C"
 #define CAS_CONNECTION_REPLY_SIZE_V3               (CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
 #define CAS_CONNECTION_REPLY_SIZE_V4               (CAS_PID_SIZE + CAS_PID_SIZE + BROKER_INFO_SIZE + DRIVER_SESSION_SIZE)
 #define CAS_CONNECTION_REPLY_SIZE               CAS_CONNECTION_REPLY_SIZE_V4
-#define CAS_KEEP_CONNECTION_OFF			0
-#define CAS_KEEP_CONNECTION_ON			1
+
+#define CAS_KEEP_CONNECTION_ON                  1
 
 #define CAS_GET_QUERY_INFO_PLAN			1
 
@@ -135,8 +144,6 @@ extern "C"
 #define CAS_REQ_HEADER_PHP	"PHP"
 #define CAS_REQ_HEADER_OLEDB	"OLEDB"
 #define CAS_REQ_HEADER_CCI	"CCI"
-
-#define CAS_METHOD_USER_ERROR_BASE	-10000
 
 #define SHARD_ID_INVALID 		(-1)
 #define SHARD_ID_UNSUPPORTED	(-2)
@@ -189,7 +196,12 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE = 41,
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
+    CAS_FC_CAS_CHANGE_MODE = 44,
 
+    /* Whenever you want to introduce a new function code,
+     * you must add a corresponding function entry to server_fn_table
+     * of both CUBRID and (MySQL, Oracle).
+     */
     CAS_FC_MAX,
 
     /* function code list of protocol version V2 - 9.0.0.xxxx */
@@ -206,7 +218,7 @@ extern "C"
     PROTOCOL_V3 = 3,		/* session information extend with server session key */
     PROTOCOL_V4 = 4,		/* send as_index to driver */
     PROTOCOL_V5 = 5,		/* shard feature, fetch end flag */
-    LAST_PROTOCOL_VERSION = PROTOCOL_V5
+    CURRENT_PROTOCOL = PROTOCOL_V5
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -252,13 +264,11 @@ extern "C"
 	|| (type) == CAS_PROXY_DBMS_MYSQL \
 	|| (type) == CAS_PROXY_DBMS_ORACLE)
 
-#if defined(CUBRID_SHARD)
 #define IS_VALID_CAS_FC(fc) \
 	(fc >= CAS_FC_END_TRAN && fc < CAS_FC_MAX)
-#endif				/* CUBRID_SHARD */
 
 /* Current protocol version */
-#define CAS_PROTOCOL_VERSION    ((unsigned char)(LAST_PROTOCOL_VERSION))
+#define CAS_PROTOCOL_VERSION    ((unsigned char)(CURRENT_PROTOCOL))
 
 /* Indicates version variable holds CAS protocol version. */
 #define CAS_PROTO_INDICATOR     (0x40)
@@ -267,7 +277,7 @@ extern "C"
 #define CAS_PROTO_MAKE_VER(VER)         \
         ((T_BROKER_VERSION) (CAS_PROTO_INDICATOR << 24 | (VER)))
 #define CAS_PROTO_CURRENT_VER           \
-        ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CAS_PROTOCOL_VERSION))
+        ((T_BROKER_VERSION) CAS_PROTO_MAKE_VER(CURRENT_PROTOCOL))
 
 #define DOES_CLIENT_MATCH_THE_PROTOCOL(CLIENT, MATCH) ((CLIENT) == CAS_PROTO_MAKE_VER((MATCH)))
 #define DOES_CLIENT_UNDERSTAND_THE_PROTOCOL(CLIENT, REQUIRE) ((CLIENT) >= CAS_PROTO_MAKE_VER((REQUIRE)))
@@ -279,7 +289,7 @@ extern "C"
 #define CAS_PROTO_UNPACK_NET_VER(VER)       \
         (CAS_PROTO_MAKE_VER(CAS_PROTO_VER_MASK & (char)(VER)))
 #define CAS_PROTO_PACK_CURRENT_NET_VER      \
-        CAS_PROTO_PACK_NET_VER(CAS_PROTOCOL_VERSION)
+        CAS_PROTO_PACK_NET_VER(CURRENT_PROTOCOL)
 
 #define CAS_CONV_ERROR_TO_OLD(V) (V + 9000)
 #define CAS_CONV_ERROR_TO_NEW(V) (V - 9000)
@@ -336,8 +346,6 @@ extern "C"
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-  extern bool cas_di_understand_reconnect_when_server_down (const char
-						       *driver_info);
   extern void cas_bi_make_broker_info (char *broker_info, char dbms_type,
 				       char statement_pooling,
 				       char cci_pconnect);

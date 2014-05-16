@@ -69,6 +69,8 @@ extern "C"
 #define gettid()                GetCurrentThreadId()
 #elif defined(AIX)
 #define gettid()                pthread_self()
+#elif defined(MAC_OS)
+#define gettid()                getpid()
 #else
 #define gettid()                syscall(__NR_gettid)
 #endif
@@ -198,8 +200,8 @@ extern "C"
       else {                                                        \
         time_to_check = (CON_HANDLE)->query_timeout;                \
       }                                                             \
+      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
       if (time_to_check > 0) {                                      \
-        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (time_to_check);            \
       }                                                             \
     }                                                               \
@@ -208,8 +210,8 @@ extern "C"
 #define SET_START_TIME_FOR_LOGIN(CON_HANDLE)                        \
   do {                                                              \
     if (CON_HANDLE) {                                               \
+      gettimeofday(&((CON_HANDLE)->start_time), NULL);              \
       if ((CON_HANDLE)->login_timeout > 0) {                        \
-        gettimeofday(&((CON_HANDLE)->start_time), NULL);        \
         (CON_HANDLE)->current_timeout = (CON_HANDLE)->login_timeout;\
       }                                                             \
     }                                                               \
@@ -264,6 +266,7 @@ extern "C"
     char *pass;
     char *url;
 
+    int max_pool_size;
     int pool_size;
     int max_wait;
     bool pool_prepared_statement;
@@ -271,6 +274,7 @@ extern "C"
     int default_autocommit;
     T_CCI_TRAN_ISOLATION default_isolation;
     int default_lock_timeout;
+    int login_timeout;
 
     int num_idle;
     int *con_handles;		/* realloc by pool_size */
@@ -325,6 +329,7 @@ extern "C"
  * PUBLIC FUNCTION PROTOTYPES						*
  ************************************************************************/
   extern int get_elapsed_time (struct timeval *start_time);
+
   extern unsigned int mht_5strhash (void *key, unsigned int ht_size);
   extern int mht_strcasecmpeq (void *key1, void *key2);
 
@@ -336,6 +341,8 @@ extern "C"
   extern void *mht_get (MHT_TABLE * ht, void *key);
   extern void *mht_put (MHT_TABLE * ht, void *key, void *data);
   extern void *mht_put_data (MHT_TABLE * ht, void *key, void *data);
+
+  extern int hostname2uchar (char *host, unsigned char *ip_addr);
 
 /************************************************************************
  * PUBLIC VARIABLES							*

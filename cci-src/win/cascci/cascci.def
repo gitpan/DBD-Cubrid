@@ -44,6 +44,7 @@ EXPORTS
 	cci_col_seq_insert
 	cci_col_seq_put
 	cci_is_updatable
+	cci_is_holdable
 	cci_next_result
 	cci_bind_param_array_size
 	cci_bind_param_array
@@ -88,6 +89,7 @@ EXPORTS
 	
 	cci_set_charset
 	cci_row_count
+	cci_get_shard_id_with_req_handle
 	cci_last_insert_id
 	cci_get_last_insert_id
 	cci_get_autocommit
@@ -102,6 +104,8 @@ EXPORTS
 	cci_datasource_release
 	cci_set_allocators
 	cci_escape_string
+	cci_set_holdability
+	cci_get_holdability
 	
 	cci_log_get
 	cci_log_finalize
@@ -111,9 +115,6 @@ EXPORTS
 	cci_log_set_level
 	cci_log_is_writable
 	cci_log_set_force_flush
-	cci_log_use_default_newline
-	cci_log_use_default_prefix
-	cci_log_change_max_file_size_appender
 	cci_log_set_default_postfix
 	
 ;          WEP PRIVATE

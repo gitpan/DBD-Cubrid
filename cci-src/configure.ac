@@ -41,6 +41,9 @@ AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_CC_C_O
 
+# Checks whether OS is AIX.
+AM_CONDITIONAL([BUILD_CMSERVER_FOR_AIX], [test $(uname) = "AIX"])
+
 # Checks bit model feature.
 AC_ARG_ENABLE([64bit],
 	[AS_HELP_STRING([--enable-64bit],
@@ -161,7 +164,7 @@ AC_CHECK_LIB([dl], [main])
 AC_CHECK_LIB([pthread], [main])
 AC_CHECK_LIB([curses], [main])
 AC_CHECK_LIB([stdc++], [main])
-AC_CHECK_LIB([gcrypt], [main])
+#AC_CHECK_LIB([gcrypt], [main])
 
 # Checks for header files.
 AC_HEADER_STDC
@@ -289,14 +292,14 @@ AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
 	[AC_MSG_RESULT([no])])
 
-AC_MSG_CHECKING([for HP-UX gethostbyname_r])
+AC_MSG_CHECKING([for struct hostent_data gethostbyname_r])
 AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <netdb.h>]],
 	[[struct hostent result;
-	 char buf[1024];
-	 gethostbyname_r("localhost", &result, buf);
+	 struct hostent_data ht_data;
+	 gethostbyname_r("localhost", &result, &ht_data);
 	]])],
 	[AC_MSG_RESULT([yes])
-	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HPUX, 1, [Using HPUX gethostbyname_r()])
+	 AC_DEFINE(HAVE_GETHOSTBYNAME_R_HOSTENT_DATA, 1, [Using struct hostent_data gethostbyname_r()])
 	 AC_DEFINE(HAVE_GETHOSTBYNAME_R, 1, [Define to 1 if you have the gethostbyname_r function.])],
 	[AC_MSG_RESULT([no])])
 
@@ -413,6 +416,13 @@ AC_ARG_ENABLE([mock],
 	[enable_mock=no])
 AS_IF([test "$enable_mock" = "yes"],
 	[DBGW_DEFS="$DBGW_DEFS -DBUILD_MOCK"])
+
+AC_ARG_ENABLE([nclavis],
+  [AS_HELP_STRING([--enable-nclavis],
+    [build as dbgw lib to use nclavis feature @<:@default=no@:>@])],
+  [enable_nclavis=$enableval],
+  [enable_nclavis=no])
+AM_CONDITIONAL([BUILD_NCLAVIS], [test "$enable_nclavis" != "no"])
 
 AC_MSG_CHECKING(for java home)
 AS_IF([test "$with_cci_only" = "no"],
@@ -550,6 +560,53 @@ AS_IF([test "$with_cci_only" = "yes"], [with_gc=no],
 		EXTERNAL_DIST="$EXTERNAL_DIST gc6.7"])])
 AC_MSG_RESULT([$with_gc])
 
+AC_MSG_CHECKING([for libgcrypt library])
+AC_ARG_WITH([libgcrypt],
+	AS_HELP_STRING([--with-libgcrypt=PATH],
+		[prefix for installed libgcrypt @<:@default=builtin@:>@]),
+	[with_libgcrypt=$withval],
+	[with_libgcrypt=builtin])	
+AS_IF([test "$with_cci_only" = "yes"], [with_libgcrypt=no],
+	[AS_IF([test "$with_libgcrypt" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/libgcrypt-1.5.2])		
+		GCRYPT_LIBS="\$(top_builddir)/external/lib/libgcrypt.la"
+		GCRYPT_INC="-I\$(top_builddir)/external/include/"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS libgcrypt-1.5.2"],
+		[GCRYPT_LIBS="-L$with_libgcrypt/lib -lgcrypt"
+		GCRYPT_INC="-I$with_libgcrypt/include/"
+		EXTERNAL_DIST="$EXTERNAL_DIST libgcrypt-1.5.2"])])
+
+if test "$with_libgcrypt" = "no"
+then	
+  AC_CHECK_LIB([gcrypt], [main])
+else  
+  AC_DEFINE([HAVE_LIBGCRYPT], [1], [There is libgcyprt])
+fi
+AC_MSG_RESULT([$with_libgcrypt])
+
+AC_MSG_CHECKING([for libgpg-error library])
+AC_ARG_WITH([libgpg_error],
+	AS_HELP_STRING([--with-libgpg-error=PATH],
+		[prefix for installed libgpg-error @<:@default=builtin@:>@]),
+	[with_libgpg_error=$withval],
+	[with_libgpg_error=builtin])	
+AS_IF([test "$with_cci_only" = "yes"], [with_libgpg_error=no],
+	[AS_IF([test "$with_libgpg_error" = "builtin"],
+		[AC_CONFIG_SUBDIRS([external/libgpg-error-1.11])		
+		GPG_ERROR_LIBS="\$(top_builddir)/external/lib/libgpg-error.la"
+		GPG_ERROR_INC="-I\$(top_builddir)/external/include/"
+		EXTERNAL_PKGS="$EXTERNAL_PKGS libgpg-error-1.11"],
+		[GPG_ERROR_LIBS="-L$with_libgpg_error/lib -lgpg-error"
+		GPG_ERROR_INC="-I$with_libgpg_error/include/"
+		EXTERNAL_DIST="$EXTERNAL_DIST libgpg-error-1.11"])])
+if test "$with_libgpg_error" = "no"
+then	
+  AC_CHECK_LIB([gpg-error], [main])
+else  
+  AC_DEFINE([HAVE_LIBGPG_ERROR], [1], [There is libgpg-error])
+fi
+AC_MSG_RESULT([$with_libgpg-error])
+
 AC_MSG_CHECKING([for aio library])
 AC_ARG_WITH([aio],
 	AS_HELP_STRING([--with-aio],
@@ -562,19 +619,85 @@ AS_IF([test "$with_aio" = "yes"],
 	SYS_LIBS="$SYS_LIBS -lrt"])
 AC_MSG_RESULT([$with_aio])
 
-AC_MSG_CHECKING([for mysql client library])
+AC_MSG_CHECKING([for DBGW3.0 nbase-t support])
+AC_ARG_WITH([nbase_t],
+	AS_HELP_STRING([--with-nbase-t=PATH],
+	  [build as dbgw lib to use nbase-t @<:@default=builtin@:>@])],
+	[with_nbase_t=$withval],
+	[with_nbase_t=no])
+	
+case "$with_nbase_t" in
+	yes|builtin)
+		if test -d "$srcdir/external/nbase" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/nbase])
+			NBASE_T_LIB_PATH="-L\$(top_builddir)/external/nbase/lib"
+			NBASE_T_INC_PATH="-I\$(top_builddir)/external/nbase/include"
+		else
+			with_nbase_t=no
+		fi
+		;;
+	no)
+		;;
+	*)
+		NBASE_T_LIB_PATH="-L$with_nbase_t/lib"
+		NBASE_T_INC_PATH="-I$with_nbase_t/include"
+		;;
+esac
+
+if test "$with_nbase_t" != "no" || test "$enable_nclavis" != "no"
+then
+  if test -d "$srcdir/ndbgw"
+  then
+    #AC_CONFIG_FILES([ndbgw/Makefile])
+    #OPTIONAL_DIR="$OPTIONAL_DIR ndbgw"
+    OPTIONAL_DIR="$OPTIONAL_DIR"
+  else
+    AC_MSG_ERROR(cannot support nbase_t or nclavis feature)
+  fi
+fi
+
+AC_MSG_RESULT([$with_nbase_t])
+
+AC_MSG_CHECKING([for mysql client library version 5.1])
+AC_ARG_WITH([mysql51],
+	AS_HELP_STRING([--with-mysql51=PATH],
+		[for CAS for MySQL @<:@default=builtin@:>@]),
+	[with_mysql51=$withval],
+	[with_mysql51=builtin])
+
+case "$with_mysql51" in
+	yes|builtin)
+		if test -d "$srcdir/external/mysqlclient/5.1" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/mysqlclient/5.1])
+			MYSQL51_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/5.1/lib"
+			MYSQL51_INC_PATH="-I\$(top_builddir)/external/mysqlclient/5.1/include"
+		else
+			with_mysql51=no
+		fi
+		;;
+	no)
+		;;
+	*)
+		MYSQL51_LIB_PATH="-L$with_mysql/lib"
+		MYSQL51_INC_PATH="-I$with_mysql/include"
+		;;
+esac
+AM_CONDITIONAL([BUILD_CAS_FOR_MYSQL51], [test "$with_mysql51" != "no"])
+AC_MSG_RESULT([$with_mysql51])
+
+AC_MSG_CHECKING([for mysql client library version 6.1])
 AC_ARG_WITH([mysql],
 	AS_HELP_STRING([--with-mysql=PATH],
 		[for CAS for MySQL @<:@default=builtin@:>@]),
 	[with_mysql=$withval],
 	[with_mysql=builtin])
-AS_IF([test "$with_cci_only" = "yes"], [with_mysql=no])
+
 case "$with_mysql" in
 	yes|builtin)
-		if test -d "$srcdir/external/mysqlclient" -a "$enable_64bit" = "yes"; then
-			AC_CONFIG_SUBDIRS([external/mysqlclient])
-			MYSQL_LIB_PATH="-L\$(top_builddir)/external/lib"
-			MYSQL_INC_PATH="-I\$(top_builddir)/external/include/mysqlclient"
+		if test -d "$srcdir/external/mysqlclient/6.1" && test "$enable_64bit" == "yes"; then
+			AC_CONFIG_SUBDIRS([external/mysqlclient/6.1])
+			MYSQL_LIB_PATH="-L\$(top_builddir)/external/mysqlclient/6.1/lib"
+			MYSQL_INC_PATH="-I\$(top_builddir)/external/mysqlclient/6.1/include"
 		else
 			with_mysql=no
 		fi
@@ -624,7 +747,9 @@ AC_ARG_ENABLE([dbgw],
 AM_CONDITIONAL([BUILD_DBGW], [test "$enable_dbgw" != "no"])
 AS_IF([test "$with_cci_only" = "yes"], [enable_dbgw=no])
 AM_CONDITIONAL([BUILD_DBGW_ORACLE], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no"])
+AM_CONDITIONAL([BUILD_DBGW_MYSQL51], [test "$enable_dbgw" != "no" && test "$with_mysql51" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_MYSQL], [test "$enable_dbgw" != "no" && test "$with_mysql" != "no"])
+AM_CONDITIONAL([BUILD_DBGW_NBASE_T], [test "$enable_dbgw" != "no" && test "$with_nbase_t" != "no"])
 AM_CONDITIONAL([BUILD_DBGW_ALL], [test "$enable_dbgw" != "no" && test "$with_oracle" != "no" && test "$with_mysql" != "no"])
 if test "$enable_dbgw" = "yes"
 then
@@ -748,8 +873,8 @@ CCI_LIB="\$(top_builddir)/cci/libcascci.la"
 ESQL_LIB="\$(top_builddir)/util/libcubridesql.la"
 BROKER_ADMIN_LIB="\$(top_builddir)/broker/libbrokeradmin.la"
 
-EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS"
-EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC"
+EXT_LIBS="$LIBEDIT_LIBS $LZO_LIBS $GC_LIBS $REGEX_LIBS $EXPAT_LIBS $JANSSON_LIBS $GCRYPT_LIBS $GPG_ERROR_LIBS"
+EXT_INC="$LIBEDIT_INC $LZO_INC $GC_INC $REGEX_INC $EXPAT_INC $JANSSON_INC $GCRYPT_INC $GPG_ERROR_INC"
 
 AC_MSG_CHECKING([whether to use CUBRID environment variable])
 AC_ARG_ENABLE([cubridenv],
@@ -1006,6 +1131,10 @@ AC_SUBST([CUBRID_SHLOCALESDIR])
 AC_SUBST([CUBRID_COMPATDIR])
 AC_SUBST([CUBRID_LOGDIR])
 AC_SUBST([CUBRID_TMPDIR])
+AC_SUBST([NBASE_T_LIB_PATH])
+AC_SUBST([NBASE_T_INC_PATH])
+AC_SUBST([MYSQL51_LIB_PATH])
+AC_SUBST([MYSQL51_INC_PATH])
 AC_SUBST([MYSQL_LIB_PATH])
 AC_SUBST([MYSQL_INC_PATH])
 AC_SUBST([ORACLE_LIB_PATH])

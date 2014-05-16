@@ -313,7 +313,7 @@ extern int qe_prepare_and_execute (T_REQ_HANDLE * req_handle,
 				   char *sql_stmt, int max_col_size,
 				   T_CCI_ERROR * err_buf);
 
-extern void qe_bind_value_free (int num_bind, T_BIND_VALUE * bind_value);
+extern void qe_bind_value_free (T_REQ_HANDLE * req_handle);
 extern int qe_bind_param (T_REQ_HANDLE * req_handle,
 			  int index,
 			  T_CCI_A_TYPE a_type,
@@ -330,6 +330,10 @@ extern int qe_get_db_parameter (T_CON_HANDLE * con_handle,
 extern int qe_set_db_parameter (T_CON_HANDLE * con_handle,
 				T_CCI_DB_PARAM param_name,
 				void *value, T_CCI_ERROR * err_buf);
+extern int qe_set_cas_change_mode (T_CON_HANDLE * con_handle, int mode,
+				   T_CCI_ERROR * err_buf);
+extern int qe_close_query_result (T_REQ_HANDLE * req_handle,
+				  T_CON_HANDLE * con_handle);
 extern int qe_close_req_handle (T_REQ_HANDLE * req_handle,
 				T_CON_HANDLE * con_handle);
 extern void qe_close_req_handle_all (T_CON_HANDLE * con_handle);
@@ -410,10 +414,9 @@ extern int qe_execute_batch (T_CON_HANDLE * con_handle,
 extern int qe_query_result_copy (T_REQ_HANDLE * req_handle,
 				 T_CCI_QUERY_RESULT ** res_qr);
 
-extern int qe_get_data_str (T_VALUE_BUF * conv_val_buf,
-			    T_CCI_U_TYPE u_type,
-			    char *col_value_p,
-			    int col_val_size, void *value, int *indicator);
+extern int qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type,
+			    char *col_value_p, int col_val_size, void *value,
+			    int *indicator);
 extern int qe_get_data_bigint (T_CCI_U_TYPE u_type, char *col_value_p,
 			       void *value);
 extern int qe_get_data_int (T_CCI_U_TYPE u_type,

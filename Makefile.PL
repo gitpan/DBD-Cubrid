@@ -92,6 +92,7 @@ if ($@) {
 }
 
 my $libs;
+my $incflags;
 my $myextlib;
 my $lddlflags;
 my %opts; 
@@ -111,7 +112,15 @@ if ($os =~ /^MSWin32$/i) {
 		    'LINKTYPE'      => 'dynamic',		    
 		);
 } else {
-    $libs = "-lpthread -lstdc++";
+	  $libs = "-lpthread -lstdc++";
+	  if($ARGV[0] eq "daily")
+	  {
+	  	$incflags ="-fprofile-arcs -ftest-coverage -I$CUBRID_INCLUDE_CCI -I$CUBRID_INCLUDE_BROKER -I$CUBRID_INCLUDE_BASE -I$dbi_arch_dir";
+	  }
+	  else
+	  {
+	  	$incflags ="-I$CUBRID_INCLUDE_CCI -I$CUBRID_INCLUDE_BROKER -I$CUBRID_INCLUDE_BASE -I$dbi_arch_dir";
+	  }    
     $myextlib = $CUBRID_LIB . $sep ."libcascci" . '$(LIB_EXT)';
     $lddlflags = "";
 
@@ -119,7 +128,7 @@ if ($os =~ /^MSWin32$/i) {
 		%opts = (
 		    'NAME'          => 'DBD::cubrid',
 		    'VERSION_FROM'  => 'cubrid.pm',
-		    'INC'           => "-I$CUBRID_INCLUDE_CCI -I$CUBRID_INCLUDE_BROKER -I$CUBRID_INCLUDE_BASE -I$dbi_arch_dir",
+		    'INC'           => $incflags,
 		    'LIBS'          => ["$libs"],
 		    'AUTHOR'        => 'Zhang Hui',
 		    'ABSTRACT'      => 'CUBRID database driver for the DBI module',
@@ -129,7 +138,7 @@ if ($os =~ /^MSWin32$/i) {
 		    'PREREQ_PM'     => { DBI => '1.61' },
 		    'OBJECT'        => '$(O_FILES)',
 		    'LINKTYPE'      => 'dynamic',
-		    'MYEXTLIB'      => $myextlib,
+		    'MYEXTLIB'      => $myextlib,		    
 		    'LDDLFLAGS'     => $lddlflags,
 		);
 }

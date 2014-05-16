@@ -41,7 +41,7 @@ use strict;
 
     require_version DBI 1.61;
 
-    $VERSION = '8.4.4.0002';
+    $VERSION = '9.3.0.0001';
 
     bootstrap DBD::cubrid $VERSION;
 
@@ -649,6 +649,8 @@ use strict;
     1, 0, 2, 0, 0, 0, "BIGINT", -1, -1, SQL_INTEGER, -1, 10, -1],
 ["DATETIME", SQL_TYPE_TIMESTAMP, 23, q{DATETIME '}, q{'}, undef,
     1, 0, 2, 0, 0, 0, "DATETIME", -1, -1, SQL_DATETIME, 3, -1, -1],
+["ENUM", SQL_VARCHAR, 0, undef, undef, undef,
+    1, 0, 3, 0, 0, 0, "ENUM", -1, -1, SQL_VARCHAR, -1, -1, -1],
 ["BLOB", SQL_BLOB, 0, undef, undef, undef,
     1, 0, 3, 0, 0, 0, "BLOB", -1, -1, SQL_BLOB, -1, -1, -1],
 ["CLOB", SQL_CLOB, 0, undef, undef, undef,
@@ -679,7 +681,6 @@ DBD::cubrid - CUBRID driver for the Perl5 Database Interface (DBI)
     use DBI;
 
     $dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port";
-    $dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port;autocommit=$autocommit";
 
     $dbh = DBI->connect ($dsn, $user, $password);
     $sth = $dbh->prepare("SELECT * FROM TABLE");
@@ -750,7 +751,6 @@ consult the B<DBI> documentation first!
     $dsn = "DBI:cubrid:database=$database";
     $dsn = "DBI:cubrid:database=$database;host=$hostname";
     $dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port";
-    $dsn = "DBI:cubrid:database=$database;host=$hostname;port=$port;autocommit=$autocommit"
 
     $dbh = DBI->connect ($dsn, $user, $password);
 
@@ -773,10 +773,6 @@ which failure occurred. After a failure occurs, the system connects to the broke
 specified by althosts (failover), terminates the transaction, and then attempts to
 connect to he active broker of the master database at every rctime. The default value
 is 600 seconds.
-
-B<autocommit> : String. Configures the auto-commit mode. The value maybe true, on, yes,
-false, off and no. You can set autocommit property here or in the C<\%attr> parameter.
-If you set this property at both places, the latter is effective.
 
 B<login_timeout> : INT. Configures the login timeout of CUBRID.
 
@@ -802,6 +798,11 @@ The following are some examples about different $dsn:
 
     $query = 600;
     $dsn = "dbi:cubrid:database=$db;host=$host;port=$port;query_timeout=$query;disconnect_on_query_timeout=yes";
+    
+ B<Tips:  the autocommit has been removed from the dsn since RB-8.4.4. If you wanna set up the autocommit of the connection, you have to do:>
+
+    $dbh= DBI->connect ($dsn, $user, $password,
+                      { RaiseError => 1, PrintError => 1, AutoCommit => 0 });
 
 =head1 DBI Database Handle Object
 
@@ -1147,6 +1148,7 @@ must be included in the bind_param function.
     | TIMESTAMP     | SQL_TYPE_TIMESTAMP    |
     | BIGINT        | SQL_BIGINT            |
     | DATETIME      | SQL_TYPE_TIMESTAMP    |
+    | ENUM          | SQL_VARCHAR           |
     -----------------------------------------
     | BLOB          | SQL_BLOB              |
     | CLOB          | SQL_CLOB              |

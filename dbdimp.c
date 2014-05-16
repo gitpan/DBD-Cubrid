@@ -272,22 +272,24 @@ dbd_db_login6( SV *dbh, imp_dbh_t *imp_dbh,
     int  con, res;
     T_CCI_ERROR error;
 
-    if ((con = cci_connect_with_url_ex (dbname, uid, pwd, &error)) < 0) {
+    if ((con = cci_connect_with_url_ex (dbname, uid, pwd, &error)) < 0)
+      {
         handle_error (dbh, con, &error);
         return FALSE;
-    }
+      }
 
     imp_dbh->handle = con;
 
-    if ((res = cci_end_tran (con, CCI_TRAN_COMMIT, &error)) < 0) {
+    if ((res = cci_end_tran (con, CCI_TRAN_COMMIT, &error)) < 0)
+      {
         handle_error (dbh, res, &error);
         return FALSE;
-    }
+      }
 
     DBIc_IMPSET_on(imp_dbh);
     DBIc_ACTIVE_on(imp_dbh);
 
-    return TRUE;
+    return TRUE;  
 }
 
 /***************************************************************************
@@ -535,15 +537,13 @@ dbd_db_ping( SV *dbh )
     D_imp_dbh (dbh);
 
     if ((res = cci_prepare (imp_dbh->handle, query, 0, &error)) < 0) {
-        handle_error (dbh, res, &error);
-        return FALSE;
+		goto ER_DB_PING;
     }
 
     req_handle = res;
 
     if ((res = cci_execute (req_handle, 0, 0, &error)) < 0) {
-        handle_error (dbh, res, &error);
-        return FALSE;
+        goto ER_DB_PING;
     }
 
     while (1) {
@@ -552,18 +552,15 @@ dbd_db_ping( SV *dbh )
             break;
         }
         if (res < 0) {
-            handle_error (dbh, res, &error);
-            return FALSE;
+            goto ER_DB_PING;
         }
 
         if ((res = cci_fetch (req_handle, &error)) < 0) {
-            handle_error (dbh, res, &error);
-            return FALSE;
+            goto ER_DB_PING;
         }
 
         if ((res = cci_get_data (req_handle, 1, CCI_A_TYPE_INT, &result, &ind)) < 0) {
-            handle_error (dbh, res, &error);
-            return FALSE;
+            goto ER_DB_PING;
         }
 
         if (result == 2) {
@@ -571,8 +568,9 @@ dbd_db_ping( SV *dbh )
             return TRUE;
         }
     }
-
-    cci_close_req_handle (req_handle);
+	cci_close_req_handle (req_handle);
+ER_DB_PING:
+    handle_error (dbh, res, &error);
     return FALSE;
 }
 
@@ -720,13 +718,11 @@ dbd_st_fetch( SV *sth, imp_sth_t *imp_sth )
     if (res == CCI_ER_NO_MORE_DATA) {
         return Nullav;
     } else if (res < 0) {
-        handle_error (sth, res, &error);
-        return Nullav;
+        goto ERR_ST_FETCH;
     }
 
     if ((res = cci_fetch (imp_sth->handle, &error)) < 0) {
-        handle_error (sth, res, &error);
-        return Nullav;
+        goto ERR_ST_FETCH;
     }
 
     av = DBIS->get_fbav(imp_sth);
@@ -735,17 +731,18 @@ dbd_st_fetch( SV *sth, imp_sth_t *imp_sth )
                                   imp_sth->col_count, 
                                   imp_sth->col_info, 
                                   &error)) < 0) {
-        handle_error (sth, res, &error);
-        return Nullav;
+        goto ERR_ST_FETCH;
     }
 
     res = cci_cursor (imp_sth->handle, 1, CCI_CURSOR_CURRENT, &error);
     if (res < 0 && res != CCI_ER_NO_MORE_DATA) {
-        handle_error (sth, res, &error);
-        return Nullav;
+        goto ERR_ST_FETCH;
     }
 
     return av;
+ERR_ST_FETCH:
+    handle_error (sth, res, &error);
+    return Nullav;	  
 }
 
 /***************************************************************************
@@ -938,13 +935,6 @@ int
 dbd_st_blob_read(SV *sth, imp_sth_t *imp_sth,
         int field, long offset, long len, SV *destrv, long destoffset)
 {
-    sth = sth;
-    imp_sth = imp_sth;
-    field = field;
-    offset = offset;
-    len = len;
-    destrv = destrv;
-    destoffset = destoffset;
     return FALSE;
 }
 

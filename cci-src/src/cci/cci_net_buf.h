@@ -56,7 +56,7 @@
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX)
 #define BYTE_ORDER_BIG_ENDIAN
-#elif defined(WINDOWS) || defined(LINUX) || defined(SOLARIS_X86)
+#elif defined(WINDOWS) || defined(LINUX) || defined(SOLARIS_X86)|| defined(MAC_OS)
 #ifdef BYTE_ORDER_BIG_ENDIAN
 #error BYTE_ORDER_BIG_ENDIAN defined
 #endif
